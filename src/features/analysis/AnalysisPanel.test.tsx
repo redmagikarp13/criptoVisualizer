@@ -8,7 +8,7 @@ import type { Analysis, Snapshot } from './snapshot';
 const fake = vi.hoisted(() => ({ analyze: vi.fn(), cancelAnalysis: vi.fn() }));
 vi.mock('../../lib/desktop', () => ({ desktop: { available: true, ...fake } }));
 const analysis: Analysis = { summary: '<script>não executar</script>', trend: 'lateral', evidence: ['RSI neutro'], scenarios: [{ condition: 'Se romper', interpretation: 'Reavaliar' }], risks: ['Volatilidade'], limitations: ['Sem notícias'] };
-const props: AnalysisPanelProps = { symbol: 'BTCUSDT', interval: '1m', candles: [{ time: 60, open: 10, high: 12, low: 9, close: 11, volume: 2, closed: true }, { time: 120, open: 11, high: 12, low: 10, close: 11, volume: 1, closed: false }], preferences: defaultPreferences, statuses: [{ agent: 'qoder', available: true, path: 'fake', message: 'Compatível' }], comparison: null, hidden: false, brStocks: [], brapiToken: '', brStockQuotes: {}, brStocksLoading: false, brStocksError: '', brStocksLastFetch: null, onAddBrStock: () => {}, onRemoveBrStock: () => {}, onRefreshBrStocks: () => {} };
+const props: AnalysisPanelProps = { symbol: 'BTCUSDT', interval: '1m', candles: [{ time: 60, open: 10, high: 12, low: 9, close: 11, volume: 2, closed: true }, { time: 120, open: 11, high: 12, low: 10, close: 11, volume: 1, closed: false }], preferences: defaultPreferences, statuses: [{ agent: 'qoder', available: true, path: 'fake', message: 'Compatível' }], comparison: null, hidden: false };
 beforeEach(() => { fake.analyze.mockReset(); fake.cancelAnalysis.mockReset(); });
 it('envia somente candles fechados e mantém a identificação após trocar o gráfico', async () => {
   let finish!: (value: { analysis: Analysis; model: string | null }) => void;

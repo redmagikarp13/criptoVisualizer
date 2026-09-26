@@ -73,6 +73,11 @@ export const desktop = {
       try { await invoke('show_main_window'); } catch { /* ignore */ }
     }
   },
+  async exitApp(): Promise<void> {
+    if (available) {
+      try { await invoke('exit_app'); } catch { /* ignore */ }
+    }
+  },
   async searchBrStocks(query: string, token?: string): Promise<BrStockSearchResult[]> {
     const q = query.trim();
     if (!q) return [];

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Maximize2, Bell, RefreshCw, Activity, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Maximize2, Bell, RefreshCw, Activity, ArrowUpRight, ArrowDownRight, Power } from 'lucide-react';
 import { desktop } from '../lib/desktop';
 import { defaultPreferences, type Preferences } from '../features/settings/preferences';
 import { useMarket } from '../features/market/useMarket';
@@ -152,6 +152,14 @@ export function WidgetApp() {
             onClick={() => desktop.showMainWindow()}
           >
             <Maximize2 size={14} />
+          </button>
+          <button
+            type="button"
+            className="widget-icon-btn"
+            title="Encerrar CriptoVisualizer"
+            onClick={() => desktop.exitApp()}
+          >
+            <Power size={14} />
           </button>
         </div>
       </header>

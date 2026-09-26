@@ -672,16 +672,6 @@ export function App() {
         statuses={statuses}
         comparison={isCurrentB3 ? null : comparison}
         hidden={!analysisOpen}
-        brStocks={preferences.brStocks ?? []}
-        brapiToken={preferences.brapiToken ?? ''}
-        brStockQuotes={brStocks.quotes}
-        brStocksLoading={brStocks.loading}
-        brStocksError={brStocks.error}
-        brStocksLastFetch={brStocks.lastFetch}
-        onAddBrStock={ticker => update({ brStocks: [...(preferences.brStocks ?? []), ticker] })}
-        onRemoveBrStock={ticker => update({ brStocks: (preferences.brStocks ?? []).filter(t => t !== ticker) })}
-        onRefreshBrStocks={() => setBrStocksRefresh(v => v + 1)}
-        onSelectSymbol={symbol => update({ symbol })}
       />
 
       {settingsOpen && (

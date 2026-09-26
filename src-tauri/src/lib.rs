@@ -130,12 +130,28 @@ fn update_tray(title: String, app: tauri::AppHandle) {
 #[tauri::command]
 fn show_main_window(app: tauri::AppHandle) {
     if let Some(main) = app.get_webview_window("main") {
+        let _ = main.unminimize();
         let _ = main.show();
         let _ = main.set_focus();
+    } else {
+        let _ = tauri::WebviewWindowBuilder::new(
+            &app,
+            "main",
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("CriptoVisualizer")
+        .inner_size(1440.0, 900.0)
+        .min_inner_size(1024.0, 700.0)
+        .build();
     }
     if let Some(widget) = app.get_webview_window("widget") {
         let _ = widget.hide();
     }
+}
+
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 static LAST_WIDGET_UNFOCUS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -281,6 +297,11 @@ pub fn run() {
                 }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                    return;
+                }
                 if window.label() == "widget" {
                     let _ = window.hide();
                     api.prevent_close();
@@ -292,14 +313,24 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             load_preferences, save_preferences, list_instruments, start_market,
             stop_market, detect_cli, analyze_market, cancel_analysis,
-            notify, update_tray, show_main_window,
+            notify, update_tray, show_main_window, exit_app,
             search_br_stocks, fetch_br_quotes, fetch_br_stock_candles
         ])
         .build(tauri::generate_context!())
         .expect("Não foi possível iniciar o CriptoVisualizer")
         .run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                if shutdown(app) { api.prevent_exit(); }
+            match event {
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    if shutdown(app) { api.prevent_exit(); }
+                }
+                tauri::RunEvent::Reopen { .. } => {
+                    if let Some(main) = app.get_webview_window("main") {
+                        let _ = main.unminimize();
+                        let _ = main.show();
+                        let _ = main.set_focus();
+                    }
+                }
+                _ => {}
             }
         });
 }

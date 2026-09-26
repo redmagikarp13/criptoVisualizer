@@ -7,8 +7,7 @@ import type { Comparison } from '../market/comparison';
 import { OrderBookView } from '../orderbook/OrderBook';
 import { analyzeOrderBookBots } from '../orderbook/botDetector';
 import { BookOpen, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
-import { BrStocksPanel } from '../brstocks/BrStocksPanel';
-import type { BrStockQuote } from '../brstocks/useBrStocks';
+import { isB3Symbol } from '../../lib/symbol';
 
 export interface AnalysisPanelProps {
   symbol: string;
@@ -21,16 +20,6 @@ export interface AnalysisPanelProps {
   statuses: CliStatus[];
   comparison: Comparison | null;
   hidden: boolean;
-  brStocks: string[];
-  brapiToken: string;
-  brStockQuotes: Record<string, BrStockQuote>;
-  brStocksLoading: boolean;
-  brStocksError: string;
-  brStocksLastFetch: number | null;
-  onAddBrStock: (ticker: string) => void;
-  onRemoveBrStock: (ticker: string) => void;
-  onRefreshBrStocks: () => void;
-  onSelectSymbol?: (symbol: string) => void;
 }
 
 export function AnalysisPanel({
@@ -44,15 +33,6 @@ export function AnalysisPanel({
   statuses,
   comparison,
   hidden,
-  brStocks,
-  brStockQuotes,
-  brStocksLoading,
-  brStocksError,
-  brStocksLastFetch,
-  onAddBrStock,
-  onRemoveBrStock,
-  onRefreshBrStocks,
-  onSelectSymbol,
 }: AnalysisPanelProps) {
   const [orderBookOpen, setOrderBookOpen] = useState(true);
   const [aiOpen, setAiOpen] = useState(true);
@@ -136,48 +116,38 @@ export function AnalysisPanel({
 
   const mismatch = record && (record.snapshot.symbol !== symbol || record.snapshot.interval !== interval);
 
+  const isStock = isB3Symbol(symbol);
+
   return (
     <aside className="analysis-panel" aria-label="Painel de mercado e análise" hidden={hidden}>
-      {/* Ações BR — B3 */}
-      <BrStocksPanel
-        quotes={brStockQuotes}
-        tickers={brStocks}
-        loading={brStocksLoading}
-        error={brStocksError}
-        lastFetch={brStocksLastFetch}
-        onAddTicker={onAddBrStock}
-        onRemoveTicker={onRemoveBrStock}
-        onRefresh={onRefreshBrStocks}
-        onSelectTicker={onSelectSymbol}
-        selectedTicker={symbol}
-      />
-
-      {/* Livro de Ofertas (Order Book) */}
-      <section className="sidebar-section orderbook-section" aria-label="Livro de Ofertas">
-        <button
-          type="button"
-          className="section-header-btn"
-          onClick={() => setOrderBookOpen(v => !v)}
-          aria-expanded={orderBookOpen}
-        >
-          <div className="section-title">
-            <BookOpen size={16} />
-            <h2>Livro de Ofertas</h2>
-          </div>
-          <div className="section-meta">
-            <span>Binance</span>
-            {orderBookOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </div>
-        </button>
-        {orderBookOpen && (
-          <OrderBookView
-            depth={depth ?? null}
-            currentPrice={currentPrice}
-            onSelectPrice={onSelectPrice}
-            maxLevels={8}
-          />
-        )}
-      </section>
+      {/* Livro de Ofertas (Order Book) - Apenas para Criptomoedas com dados L2 */}
+      {!isStock && (
+        <section className="sidebar-section orderbook-section" aria-label="Livro de Ofertas">
+          <button
+            type="button"
+            className="section-header-btn"
+            onClick={() => setOrderBookOpen(v => !v)}
+            aria-expanded={orderBookOpen}
+          >
+            <div className="section-title">
+              <BookOpen size={16} />
+              <h2>Livro de Ofertas</h2>
+            </div>
+            <div className="section-meta">
+              <span>Binance</span>
+              {orderBookOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </div>
+          </button>
+          {orderBookOpen && (
+            <OrderBookView
+              depth={depth ?? null}
+              currentPrice={currentPrice}
+              onSelectPrice={onSelectPrice}
+              maxLevels={8}
+            />
+          )}
+        </section>
+      )}
 
       {/* Análise por IA */}
       <section className="sidebar-section ai-section" aria-label="Análise por IA">
