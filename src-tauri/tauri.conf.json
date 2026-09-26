@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CriptoVisualizer",
+  "version": "0.1.0",
+  "identifier": "app.criptovisualizer.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      { "label": "main", "title": "CriptoVisualizer", "url": "index.html", "width": 1440, "height": 900, "minWidth": 1024, "minHeight": 700, "devtools": true },
+      { "label": "widget", "title": "CriptoVisualizer Widget", "url": "index.html?view=widget", "width": 380, "height": 520, "resizable": false, "decorations": false, "alwaysOnTop": true, "visible": false, "skipTaskbar": true, "transparent": true, "devtools": true }
+    ],
+    "security": {
+      "csp": "default-src 'self' tauri:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost tauri:; object-src 'none'; base-uri 'self'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "shortDescription": "Mercado cripto, indicadores e análise contextual",
+    "category": "Finance",
+    "windows": { "nsis": { "installMode": "currentUser", "languages": ["PortugueseBR"] } },
+    "macOS": { "minimumSystemVersion": "12.0" }
+  }
+}

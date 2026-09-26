@@ -1,0 +1,1 @@
+{"main-window":{"identifier":"main-window","description":"Apenas eventos da janela principal; processos e rede são controlados pelo Rust.","local":true,"windows":["main","widget"],"permissions":["core:event:default"]}}

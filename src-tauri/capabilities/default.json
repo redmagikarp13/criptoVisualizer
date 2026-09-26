@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "Apenas eventos da janela principal; processos e rede são controlados pelo Rust.",
+  "windows": ["main", "widget"],
+  "permissions": ["core:event:default"]
+}
