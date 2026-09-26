@@ -29,6 +29,8 @@ pub struct Preferences {
     pub antigravity_enabled: bool, pub qoder_path: String, pub antigravity_path: String,
     pub qoder_model: String, pub antigravity_model: String,
     #[serde(default)] pub alerts: Vec<Alert>,
+    #[serde(default)] pub br_stocks: Vec<String>,
+    #[serde(default)] pub brapi_token: String,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -55,6 +57,8 @@ impl Default for Preferences {
                 Alert { id: "iota-resistance-0052".into(), symbol: "IOTAUSDC".into(), direction: "above".into(), price: 0.052, enabled: true, mode: "recurring".into() },
                 Alert { id: "iota-support-0046".into(), symbol: "IOTAUSDC".into(), direction: "below".into(), price: 0.046, enabled: true, mode: "recurring".into() },
             ],
+            br_stocks: vec!["PETR4".into(), "VALE3".into(), "ITUB4".into(), "BBDC4".into(), "BBAS3".into()],
+            brapi_token: String::new(),
         }
     }
 }
@@ -81,7 +85,32 @@ pub fn split_symbol(value: &str) -> Option<(String, String)> {
     let (quote, ql) = best?;
     Some((value[..value.len() - ql].to_string(), quote.to_string()))
 }
-pub fn valid_symbol(value: &str) -> bool { split_symbol(value).is_some() }
+pub fn is_crypto_symbol(value: &str) -> bool { split_symbol(value).is_some() }
+
+pub fn is_b3_symbol(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() < 5 || bytes.len() > 7 {
+        return false;
+    }
+    let letters = &bytes[0..4];
+    if !letters.iter().all(|b| b.is_ascii_uppercase()) {
+        return false;
+    }
+    let rest = &bytes[4..];
+    let digits = rest.iter().take_while(|b| b.is_ascii_digit()).count();
+    if digits == 0 || digits > 2 {
+        return false;
+    }
+    if digits == rest.len() {
+        return true;
+    }
+    if digits + 1 == rest.len() && (rest[digits] == b'F' || rest[digits] == b'B') {
+        return true;
+    }
+    false
+}
+
+pub fn valid_symbol(value: &str) -> bool { is_crypto_symbol(value) || is_b3_symbol(value) }
 pub fn valid_interval(value: &str) -> bool { ["1m", "5m", "15m", "1h", "4h", "1d"].contains(&value) }
 impl Preferences {
     pub fn validate(&self) -> Result<()> {
@@ -98,6 +127,8 @@ impl Preferences {
             || self.qoder_path.len() > 1024 || self.antigravity_path.len() > 1024
             || !model_valid(&self.qoder_model) || !model_valid(&self.antigravity_model)
             || self.alerts.len() > 50 || self.alerts.iter().any(|a| !alert_valid(a))
+            || self.br_stocks.len() > 50 || self.br_stocks.iter().any(|s| !is_b3_symbol(s))
+            || self.brapi_token.len() > 100
             || [self.indicators.sma_period, self.indicators.ema_fast_period, self.indicators.ema_slow_period].iter().any(|p| !(2..=200).contains(p)) {
             return Err(AppError::new("invalid_settings", "Configuração inválida. Revise os pares, períodos e caminhos."));
         }

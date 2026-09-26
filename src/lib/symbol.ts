@@ -18,9 +18,17 @@ export function splitSymbol(value: string): { base: string; quote: string } | nu
   return best;
 }
 
-export const isValidSymbol = (value: string): boolean => splitSymbol(value) !== null;
+export function isB3Symbol(value: string): boolean {
+  return /^[A-Z]{4}[0-9]{1,2}[FB]?$/.test(value);
+}
 
-// Rótulo "BTC / USDT"; mantém o texto original se o símbolo não for reconhecido.
+export function isCryptoSymbol(value: string): boolean {
+  return splitSymbol(value) !== null;
+}
+
+export const isValidSymbol = (value: string): boolean => isCryptoSymbol(value) || isB3Symbol(value);
+
+// Rótulo "BTC / USDT"; mantém o texto original se o símbolo não for reconhecido ou for ação B3.
 export function pairLabel(symbol: string): string {
   const split = splitSymbol(symbol);
   return split ? `${split.base} / ${split.quote}` : symbol;

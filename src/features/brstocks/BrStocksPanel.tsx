@@ -12,6 +12,8 @@ interface BrStocksPanelProps {
   onAddTicker: (ticker: string) => void;
   onRemoveTicker: (ticker: string) => void;
   onRefresh: () => void;
+  onSelectTicker?: (ticker: string) => void;
+  selectedTicker?: string;
 }
 
 const fmtPrice = (v: number) =>
@@ -29,7 +31,7 @@ const fmtTime = (ts: number) =>
 
 export function BrStocksPanel({
   quotes, tickers, loading, error, lastFetch,
-  onAddTicker, onRemoveTicker, onRefresh,
+  onAddTicker, onRemoveTicker, onRefresh, onSelectTicker, selectedTicker,
 }: BrStocksPanelProps) {
   const [expanded, setExpanded] = useState(true);
   const [input, setInput] = useState('');
@@ -100,7 +102,13 @@ export function BrStocksPanel({
                 const q = quotes[ticker];
                 const isPositive = (q?.change ?? 0) >= 0;
                 return (
-                  <div key={ticker} className="br-stock-row">
+                  <div
+                    key={ticker}
+                    className={`br-stock-row ${selectedTicker === ticker ? 'selected' : ''}`}
+                    onClick={() => onSelectTicker?.(ticker)}
+                    style={{ cursor: onSelectTicker ? 'pointer' : 'default' }}
+                    title={onSelectTicker ? `Ver gráfico e indicadores de ${ticker}` : undefined}
+                  >
                     <div className="br-stock-info">
                       <span className="br-stock-ticker">{ticker}</span>
                       {q?.shortName && (
@@ -127,7 +135,10 @@ export function BrStocksPanel({
                       type="button"
                       className="br-stock-remove icon-button"
                       aria-label={`Remover ${ticker}`}
-                      onClick={() => onRemoveTicker(ticker)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveTicker(ticker);
+                      }}
                     >
                       <X size={12} />
                     </button>

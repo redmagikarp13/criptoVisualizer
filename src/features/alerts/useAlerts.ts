@@ -19,6 +19,9 @@ export function useAlerts(
   const [snapshot, setSnapshot] = useState<AlertRuntime[]>(runtime.current);
   const [fired, setFired] = useState<AlertRuntime[]>([]);
 
+  const onDisableRef = useRef(onDisable);
+  onDisableRef.current = onDisable;
+
   useEffect(() => {
     const previous = new Map(runtime.current.map(a => [a.id, a]));
     runtime.current = rules.map(rule => {
@@ -64,11 +67,11 @@ export function useAlerts(
         void desktop.notify(title, body);
 
         if (alert.mode === 'once') {
-          onDisable?.(alert.id);
+          onDisableRef.current?.(alert.id);
         }
       }
     }
-  }, [quotes, onDisable]);
+  }, [quotes]);
 
   return {
     alerts: snapshot,

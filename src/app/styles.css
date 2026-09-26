@@ -986,3 +986,131 @@ html.is-widget #root {
   display: flex; align-items: center; justify-content: space-between;
   margin-top: 8px; font-size: 11px;
 }
+.br-stock-row.selected {
+  background: var(--accent-soft);
+  border-radius: 4px;
+}
+
+/* Busca Unificada: Cripto & B3 */
+.search-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.search-section-header:not(:first-child) {
+  margin-top: 14px;
+}
+.search-result-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+.search-result-btn:hover {
+  background: var(--surface-hover, var(--subtle));
+  border-color: var(--border);
+}
+.search-stock-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: 65%;
+}
+.search-stock-ticker {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+}
+.search-stock-name {
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-stock-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.search-stock-price {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.search-loading, .search-empty {
+  padding: 12px 6px;
+  font-size: 12px;
+}
+.direct-b3-btn {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  margin-top: 4px;
+}
+
+/* Resumo da Ação B3 na Área Principal */
+.stock-summary-section {
+  padding: 20px 24px;
+  border-top: 1px solid var(--border);
+}
+.stock-summary-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.stock-summary-heading h2 {
+  font-size: 15px;
+  font-weight: 650;
+}
+.stock-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.stock-metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.stock-metric-card .metric-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 500;
+}
+.stock-metric-card strong {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.stock-metric-card span {
+  font-size: 11.5px;
+}
+

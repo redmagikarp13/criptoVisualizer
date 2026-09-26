@@ -69,6 +69,33 @@ async fn analyze_market(id: String, agent: String, snapshot: serde_json::Value, 
 fn cancel_analysis(id: String, state: State<'_, AppState>) { state.analysis.cancel(Some(&id)); }
 
 #[tauri::command]
+async fn search_br_stocks(
+    query: String,
+    token: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<market::brapi::BrStockSearchResult>> {
+    market::brapi::search_stocks(&state.client, &query, token.as_deref()).await
+}
+
+#[tauri::command]
+async fn fetch_br_quotes(
+    tickers: Vec<String>,
+    token: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<market::brapi::BrStockQuote>> {
+    market::brapi::fetch_quotes(&state.client, &tickers, token.as_deref()).await
+}
+
+#[tauri::command]
+async fn fetch_br_stock_candles(
+    ticker: String,
+    token: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<market::types::Candle>> {
+    market::brapi::fetch_stock_candles(&state.client, &ticker, token.as_deref()).await
+}
+
+#[tauri::command]
 fn notify(title: String, message: String) {
     #[cfg(target_os = "macos")]
     {
@@ -265,7 +292,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             load_preferences, save_preferences, list_instruments, start_market,
             stop_market, detect_cli, analyze_market, cancel_analysis,
-            notify, update_tray, show_main_window
+            notify, update_tray, show_main_window,
+            search_br_stocks, fetch_br_quotes, fetch_br_stock_candles
         ])
         .build(tauri::generate_context!())
         .expect("Não foi possível iniciar o CriptoVisualizer")

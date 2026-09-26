@@ -16,12 +16,15 @@ vi.mock('../lib/desktop', () => ({
     showMainWindow: async () => undefined,
     cancelAnalysis: async () => undefined,
     analyze: async () => ({ analysis: {}, model: null }),
+    searchBrStocks: async () => [{ stock: 'PETR4', name: 'Petrobras PN', close: 48.0, change: -1.5, volume: 1000000 }],
+    fetchBrStockCandles: async () => [],
+    fetchBrQuotes: async () => [],
   },
 }));
 
 vi.mock('../features/chart/MarketChart', () => ({ MarketChart: () => null }));
 vi.mock('../features/brstocks/useBrStocks', () => ({
-  useBrStocks: () => ({ quotes: {}, loading: false, error: '', lastFetch: null }),
+  useBrStocks: () => ({ quotes: { PETR4: { ticker: 'PETR4', shortName: 'Petrobras', price: 48.0, change: -1.5, changeAbs: -0.7, previousClose: 48.7, volume: 1000000, updatedAt: Date.now() } }, loading: false, error: '', lastFetch: null }),
   STALE_MS: 900_000,
 }));
 
@@ -40,6 +43,16 @@ describe('área de trabalho', () => {
     const ethBtn = await screen.findByRole('button', { name: 'Selecionar ETH / USDT' });
     fireEvent.click(ethBtn);
     expect(await screen.findByRole('heading', { name: 'ETH / USDT' })).toBeInTheDocument();
+    unmount();
+  });
+  it('integra busca de ações B3 e cripto em uma busca única', async () => {
+    const { unmount } = render(<App />);
+    const searchInput = await screen.findByRole('textbox', { name: 'Buscar par Spot ou ação B3' });
+    fireEvent.change(searchInput, { target: { value: 'PETR4' } });
+    const directBtn = await screen.findByRole('button', { name: /Abrir ação B3 PETR4/ });
+    fireEvent.click(directBtn);
+    expect(await screen.findByRole('heading', { name: 'PETR4' })).toBeInTheDocument();
+    expect(screen.getByText(/B3 \(Brasil\)/)).toBeInTheDocument();
     unmount();
   });
   it('Antigravity começa desabilitado e exige consentimento explícito', async () => {

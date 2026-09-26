@@ -23,4 +23,14 @@ describe('símbolos multi-cotação', () => {
     expect(pairLabel('BTCUSDC')).toBe('BTC / USDC');
     expect(pairLabel('BTCUSDT')).toBe('BTC / USDT');
   });
+  it('reconhece ações e FIIs da B3 como válidos', () => {
+    expect(isValidSymbol('PETR4')).toBe(true);
+    expect(isValidSymbol('VALE3')).toBe(true);
+    expect(isValidSymbol('BOVA11')).toBe(true);
+    expect(isValidSymbol('MXRF11')).toBe(true);
+    expect(isValidSymbol('PETR4F')).toBe(true);
+    expect(pairLabel('PETR4')).toBe('PETR4');
+    expect(isValidSymbol('PET4')).toBe(false);
+    expect(isValidSymbol('PETR')).toBe(false);
+  });
 });

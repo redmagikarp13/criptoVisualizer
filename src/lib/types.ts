@@ -45,3 +45,28 @@ export function errorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'message' in error) return String(error.message);
   return typeof error === 'string' ? error : 'Ocorreu um erro inesperado.';
 }
+
+export interface BrStockSearchResult {
+  stock: string;
+  name: string;
+  close?: number;
+  change?: number;
+  volume?: number;
+  marketCap?: number;
+  logo?: string;
+  sector?: string;
+  stockType?: string;
+}
+
+export interface BrStockQuote {
+  ticker: string;
+  shortName: string;
+  price: number;
+  change: number;
+  changeAbs: number;
+  previousClose: number;
+  volume: number;
+  marketCap?: number;
+  logourl?: string;
+  updatedAt: number;
+}

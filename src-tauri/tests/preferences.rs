@@ -30,6 +30,15 @@ fn aceita_cotacoes_conhecidas_e_recusa_desconhecidas() {
     assert_eq!(split_symbol("XRPEURI"), Some(("XRP".into(), "EURI".into())));
     assert_eq!(split_symbol("ENABTC"), Some(("ENA".into(), "BTC".into())));
     assert_eq!(split_symbol("BTCUSD"), None);
+
+    // Ações e ativos da B3
+    assert!(valid_symbol("PETR4"));
+    assert!(valid_symbol("VALE3"));
+    assert!(valid_symbol("BOVA11"));
+    assert!(valid_symbol("MXRF11"));
+    assert!(valid_symbol("PETR4F"));
+    assert!(!valid_symbol("PET4"));     // 3 letras é inválido na B3
+    assert!(!valid_symbol("PETR"));     // sem dígito
 }
 
 #[test]

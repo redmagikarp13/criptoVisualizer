@@ -30,6 +30,7 @@ export interface AnalysisPanelProps {
   onAddBrStock: (ticker: string) => void;
   onRemoveBrStock: (ticker: string) => void;
   onRefreshBrStocks: () => void;
+  onSelectSymbol?: (symbol: string) => void;
 }
 
 export function AnalysisPanel({
@@ -51,6 +52,7 @@ export function AnalysisPanel({
   onAddBrStock,
   onRemoveBrStock,
   onRefreshBrStocks,
+  onSelectSymbol,
 }: AnalysisPanelProps) {
   const [orderBookOpen, setOrderBookOpen] = useState(true);
   const [aiOpen, setAiOpen] = useState(true);
@@ -146,6 +148,8 @@ export function AnalysisPanel({
         onAddTicker={onAddBrStock}
         onRemoveTicker={onRemoveBrStock}
         onRefresh={onRefreshBrStocks}
+        onSelectTicker={onSelectSymbol}
+        selectedTicker={symbol}
       />
 
       {/* Livro de Ofertas (Order Book) */}
