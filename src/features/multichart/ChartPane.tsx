@@ -12,6 +12,7 @@ import { isB3Symbol, pairLabel } from '../../lib/symbol';
 import { desktop } from '../../lib/desktop';
 import type { IndicatorResult } from '../indicators/calculations';
 import type { ChartPaneConfig } from './types';
+import { DerivativesBadge } from '../derivatives/DerivativesBadge';
 
 interface ChartPaneProps {
   pane: ChartPaneConfig;
@@ -178,6 +179,9 @@ export const ChartPane = memo(function ChartPane({
         </div>
 
         <div className="pane-header-right">
+          {/* Badge de Alavancagem e Mercados Futuros */}
+          {!isB3 && <DerivativesBadge symbol={pane.symbol} />}
+
           {/* Contador regressivo para fechamento do candle */}
           <div className="pane-countdown-pill" title={`Tempo restante para o fechamento do candle atual (${pane.interval})`}>
             <Clock size={11} aria-hidden="true" />

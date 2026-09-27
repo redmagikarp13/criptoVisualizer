@@ -129,17 +129,28 @@ fn valid_orderbook(ob: &Value) -> bool {
         && valid_wall(&ob["topAskWall"])
         && (!has_with_pressure || valid_pressure(&ob["botPressure"]))
 }
+fn valid_derivatives(deriv: &Value) -> bool {
+    if deriv.is_null() { return true; }
+    if !deriv.is_object() { return false; }
+    if deriv["hasFutures"].as_bool() != Some(true) { return true; }
+    deriv["fundingRate"].as_f64().is_some_and(f64::is_finite)
+        && text(&deriv["fundingRatePercent"])
+        && deriv["openInterestValueUsd"].as_f64().is_some_and(|n| n >= 0.0 && n.is_finite())
+        && deriv["longShortRatio"].as_f64().is_some_and(|n| n >= 0.0 && n.is_finite())
+        && text(&deriv["sentimentSummary"])
+}
 pub fn build_prompt(snapshot: &Value) -> Result<String> {
     let bad = snapshot_error;
     let map = snapshot.as_object().ok_or_else(bad)?;
     let required = ["symbol","interval","exchange","capturedAt","candles","historyLength","parameters","indicators","comparison"];
     if !required.iter().all(|k| map.contains_key(*k)) { return Err(bad()); }
     for key in map.keys() {
-        if !required.contains(&key.as_str()) && key != "orderBook" && key != "userNotes" {
+        if !required.contains(&key.as_str()) && key != "orderBook" && key != "userNotes" && key != "derivatives" {
             return Err(bad());
         }
     }
     let has_ob = map.contains_key("orderBook");
+    let has_deriv = map.contains_key("derivatives");
     if let Some(notes) = map.get("userNotes") {
         if !notes.is_null() {
             let s = notes.as_str().ok_or_else(bad)?;
@@ -173,12 +184,18 @@ pub fn build_prompt(snapshot: &Value) -> Result<String> {
         || !indicators.as_object().unwrap().values().all(|v| v.is_null() || v.as_f64().is_some_and(f64::is_finite))
         || !valid_comparison(&snapshot["comparison"], symbol, now) { return Err(bad()); }
     if has_ob && !valid_orderbook(&snapshot["orderBook"]) { return Err(bad()); }
+    if has_deriv && !valid_derivatives(&snapshot["derivatives"]) { return Err(bad()); }
     let notes_instruction = if let Some(notes) = snapshot.get("userNotes").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()) {
         format!(" O usuário incluiu as seguintes observações/dúvidas sobre sua posição ou operação: \"{}\". Considere e responda diretamente a essas observações no resumo, cenários condicionais e riscos da análise.", notes)
     } else {
         String::new()
     };
-    let prompt = format!("Analise somente os dados públicos de mercado a seguir. Responda em português, somente com um objeto JSON conforme o esquema. Não use ferramentas, arquivos, rede adicional ou comandos. Não execute operações financeiras. Descreva tendência observada, evidências com valores, cenários condicionais, riscos e limitações. Não invente probabilidades nem certezas sobre preços futuros. Dados insuficientes e aquecimento nulo devem ser explicitados. A comparação usa últimos negócios, não ofertas executáveis; não inclui taxas, liquidez ou transferências. Se fornecido o orderBook (livro de ofertas e detector de robôs), considere se os robôs estão forçando o preço para cima ou para baixo, as paredes de liquidez dos market makers, o balanceamento de pressão institucional e indícios de spoofing ou HFT no curto prazo.{}\nESQUEMA:\n{}\nSNAPSHOT:\n{}", notes_instruction, analysis_schema(), snapshot);
+    let deriv_instruction = if has_deriv && !snapshot["derivatives"].is_null() {
+        " Se fornecido derivatives (dados de alavancagem de mercado futuro: Open Interest, Funding Rate, Long/Short Ratio e sentimento), avalie explicitamente nos riscos e evidências o nível de alavancagem, o risco iminente de Long Squeeze ou Short Squeeze, se ocorreu alguma limpeza/flush de posições alavancadas recentemente e como isso impacta a segurança da operação."
+    } else {
+        ""
+    };
+    let prompt = format!("Analise somente os dados públicos de mercado a seguir. Responda em português, somente com um objeto JSON conforme o esquema. Não use ferramentas, arquivos, rede adicional ou comandos. Não execute operações financeiras. Descreva tendência observada, evidências com valores, cenários condicionais, riscos e limitações. Não invente probabilidades nem certezas sobre preços futuros. Dados insuficientes e aquecimento nulo devem ser explicitados. A comparação usa últimos negócios, não ofertas executáveis; não inclui taxas, liquidez ou transferências. Se fornecido o orderBook (livro de ofertas e detector de robôs), considere se os robôs estão forçando o preço para cima ou para baixo, as paredes de liquidez dos market makers, o balanceamento de pressão institucional e indícios de spoofing ou HFT no curto prazo.{}{}\nESQUEMA:\n{}\nSNAPSHOT:\n{}", notes_instruction, deriv_instruction, analysis_schema(), snapshot);
     if prompt.len() > 64 * 1024 { return Err(AppError::new("prompt_limit", "O snapshot excedeu o limite de 64 KiB.")); }
     Ok(prompt)
 }

@@ -6,8 +6,11 @@ import type { Preferences } from '../settings/preferences';
 import type { Comparison } from '../market/comparison';
 import { OrderBookView } from '../orderbook/OrderBook';
 import { analyzeOrderBookBots } from '../orderbook/botDetector';
-import { BookOpen, ChevronDown, ChevronUp, MessageSquare, Sparkles } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, MessageSquare, Sparkles, Zap } from 'lucide-react';
 import { isB3Symbol, pairLabel } from '../../lib/symbol';
+import { useDerivatives } from '../derivatives/useDerivatives';
+import { toDerivativesSnapshot } from '../derivatives/api';
+import { DerivativesWidget } from '../derivatives/DerivativesWidget';
 
 export interface AnalysisPanelProps {
   symbol: string;
@@ -44,7 +47,14 @@ export function AnalysisPanel({
   onResetResize,
   isResizing,
 }: AnalysisPanelProps) {
+  const isStock = isB3Symbol(symbol);
   const [orderBookOpen, setOrderBookOpen] = useState(true);
+  const [derivativesOpen, setDerivativesOpen] = useState(true);
+  const {
+    data: derivativesData,
+    loading: derivativesLoading,
+    refresh: refreshDerivatives,
+  } = useDerivatives(symbol, !isStock);
   const [selectedExchange, setSelectedExchange] = useState<Exchange | 'merged'>(() => {
     try {
       const saved = localStorage.getItem('criptovisualizer:orderbook-exchange');
@@ -146,7 +156,17 @@ export function AnalysisPanel({
         };
       }
 
-      const snapshot = buildSnapshot(symbol, interval, candles, preferences.indicators, comparison, Date.now(), orderBookSnapshot, userNotes);
+      const snapshot = buildSnapshot(
+        symbol,
+        interval,
+        candles,
+        preferences.indicators,
+        comparison,
+        Date.now(),
+        orderBookSnapshot,
+        userNotes,
+        toDerivativesSnapshot(derivativesData),
+      );
       const result = await desktop.analyze(id, preferences.agent, snapshot);
       const analysis = analysisSchema.parse(result.analysis);
       if (active.current) setRecord({ id, agent: preferences.agent, model: result.model, snapshot, analysis, completedAt: Date.now() });
@@ -165,8 +185,6 @@ export function AnalysisPanel({
   }
 
   const mismatch = record && (record.snapshot.symbol !== symbol || record.snapshot.interval !== interval);
-
-  const isStock = isB3Symbol(symbol);
 
   return (
     <aside className="analysis-panel" aria-label="Painel de mercado e análise" hidden={hidden}>
@@ -208,6 +226,38 @@ export function AnalysisPanel({
               onSelectPrice={onSelectPrice}
               maxLevels={8}
             />
+          )}
+        </section>
+      )}
+
+      {/* Alavancagem e Mercados Futuros */}
+      {!isStock && derivativesData?.hasFutures && (
+        <section className="sidebar-section derivatives-section" aria-label="Alavancagem e Futuros">
+          <button
+            type="button"
+            className="section-header-btn"
+            onClick={() => setDerivativesOpen(v => !v)}
+            aria-expanded={derivativesOpen}
+          >
+            <div className="section-title">
+              <Zap size={16} />
+              <h2>Alavancagem & Futuros</h2>
+            </div>
+            <div className="section-meta">
+              <span className={derivativesData.fundingRate >= 0 ? 'positive' : 'negative'}>
+                {derivativesData.fundingRatePercent}
+              </span>
+              {derivativesOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </div>
+          </button>
+          {derivativesOpen && (
+            <div className="derivatives-panel-content">
+              <DerivativesWidget
+                data={derivativesData}
+                loading={derivativesLoading}
+                onRefresh={refreshDerivatives}
+              />
+            </div>
           )}
         </section>
       )}
@@ -271,7 +321,14 @@ export function AnalysisPanel({
                   <span className="analysis-target-candles">
                     {candles.filter(c => c.closed).length} candles fechados de {interval}
                   </span>
-                  <span className="analysis-target-sync-hint">Sincronizado com o gráfico</span>
+                  {derivativesData?.hasFutures && (
+                    <span className="analysis-target-sync-hint" title="Dados de alavancagem serão fornecidos para a IA">
+                      ⚡ Futuros ({derivativesData.fundingRatePercent})
+                    </span>
+                  )}
+                  {!derivativesData?.hasFutures && (
+                    <span className="analysis-target-sync-hint">Sincronizado com o gráfico</span>
+                  )}
                 </div>
               </div>
 

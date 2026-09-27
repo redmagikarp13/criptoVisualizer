@@ -1,6 +1,6 @@
 [package]
 name = "criptovisualizer"
-version = "0.1.4"
+version = "0.1.5"
 description = "Observatório pessoal de criptomoedas"
 authors = ["CriptoVisualizer"]
 edition = "2021"

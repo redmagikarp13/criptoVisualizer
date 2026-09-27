@@ -2178,5 +2178,389 @@ body.is-resizing-v,
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
+/* ==========================================================================
+   Derivativos, Alavancagem e Mercados Futuros
+   ========================================================================== */
+
+.derivatives-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: 6px;
+}
+
+.derivatives-container.compact {
+  padding: 0;
+  gap: 8px;
+}
+
+.derivatives-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.derivatives-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.zap-icon {
+  color: #eab308;
+}
+
+.live-dot {
+  color: #10b981;
+  font-size: 8px;
+  animation: pulse 1.5s infinite;
+}
+
+.mini-refresh-btn {
+  padding: 2px 5px;
+  color: var(--muted);
+}
+.mini-refresh-btn:hover {
+  color: var(--text);
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Banner de Risco de Alavancagem */
+.derivatives-risk-banner {
+  border-radius: 5px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+}
+
+.risk-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+}
+
+.risk-banner-desc {
+  font-size: 10.5px;
+  opacity: 0.9;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.risk-badge-danger {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: var(--negative);
+}
+
+.risk-badge-purple {
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  color: #a855f7;
+}
+
+.risk-badge-warning {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #d97706;
+}
+:root[data-theme='dark'] .risk-badge-warning {
+  color: #f59e0b;
+}
+
+.risk-badge-info {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: var(--accent);
+}
+
+.risk-badge-success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--positive);
+}
+
+/* Grid de Indicadores */
+.derivatives-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.derivatives-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: var(--subtle);
+  border: 1px solid var(--border);
+}
+
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.card-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.countdown-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.card-value-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.card-value {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.card-footnote {
+  font-size: 9.5px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.oi-change-tag {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.color-short-squeeze {
+  color: #a855f7 !important;
+}
+
+/* Seção Long vs Short */
+.ls-ratio-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: var(--subtle);
+  border: 1px solid var(--border);
+}
+
+.ls-ratio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ls-ratio-badge {
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--text);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.ls-ratio-bar {
+  display: flex;
+  height: 16px;
+  border-radius: 3px;
+  overflow: hidden;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.ls-bar-fill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.3s ease;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.long-bar {
+  background: #10b981;
+}
+
+.short-bar {
+  background: #ef4444;
+}
+
+.whale-long {
+  background: #0ea5e9;
+}
+
+.whale-short {
+  background: #f97316;
+}
+
+.whale-footnote {
+  margin-top: 2px;
+}
+
+.derivatives-unavailable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  font-size: 11px;
+}
+
+/* Pill / Badge no Cabeçalho */
+.derivatives-badge-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.derivatives-badge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--subtle);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.derivatives-badge-btn:hover,
+.derivatives-badge-btn.active {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+
+.badge-zap {
+  color: #eab308;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-normal {
+  background: #10b981;
+}
+
+.dot-flush {
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+  animation: pulse 1.2s infinite;
+}
+
+.dot-danger {
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+  animation: pulse 1.2s infinite;
+}
+
+.dot-purple {
+  background: #a855f7;
+  box-shadow: 0 0 6px #a855f7;
+  animation: pulse 1.2s infinite;
+}
+
+.badge-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
+.badge-sep {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.badge-chevron {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.badge-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.derivatives-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 310px;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.popover-close-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+.popover-title {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.popover-close-btn {
+  padding: 2px;
+  color: var(--muted);
+}
+.popover-close-btn:hover {
+  color: var(--text);
+}
+
 
 

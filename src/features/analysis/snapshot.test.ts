@@ -54,6 +54,25 @@ describe('snapshot da análise', () => {
     );
     expect(snapshot.userNotes).toBe('Vendi a 64200 e quero saber se recompro');
   });
+  it('inclui dados de derivativos e alavancagem quando fornecidos', () => {
+    const derivData = {
+      hasFutures: true,
+      fundingRate: 0.00005,
+      fundingRatePercent: '+0.0050%',
+      nextFundingCountdown: '02h 45m',
+      openInterestAmount: 582000000,
+      openInterestValueUsd: 159000000,
+      openInterestChange1hPct: -2.8,
+      longShortRatio: 1.72,
+      longAccountPercent: 63.2,
+      shortAccountPercent: 36.8,
+      topTradersLongShortRatio: 1.38,
+      squeezeRisk: 'liquidation_flush' as const,
+      sentimentSummary: 'Limpeza de Alavancados Recente (Flush) (+0.0050% funding, L/S 1.72, OI $159.00M)',
+    };
+    const snapshot = buildSnapshot('BTCUSDT', '1m', candles, defaultPreferences.indicators, null, 1_700_008_000_000, null, null, derivData);
+    expect(snapshot.derivatives).toEqual(derivData);
+  });
   it('recusa análise sem candles fechados', () => {
     expect(() => buildSnapshot('BTCUSDT', '1m', [], defaultPreferences.indicators, null, Date.now())).toThrow();
   });

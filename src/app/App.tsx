@@ -13,6 +13,7 @@ import { useAlerts } from '../features/alerts/useAlerts';
 import { AlertsDialog } from '../features/alerts/AlertsDialog';
 import { isB3Symbol, pairLabel, splitSymbol } from '../lib/symbol';
 import { useBrStocks } from '../features/brstocks/useBrStocks';
+import { DerivativesBadge } from '../features/derivatives/DerivativesBadge';
 
 const price = (value: number | undefined) =>
   value === undefined ? '—' : new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: value < 1 ? 8 : 2 }).format(value);
@@ -702,7 +703,10 @@ export function App() {
               ))
             )}
           </div>
-          <span className="muted">{isCurrentB3 ? 'Histórico de 3 meses da B3' : 'Até 1.000 candles'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {!isCurrentB3 && <DerivativesBadge symbol={preferences.symbol} />}
+            <span className="muted">{isCurrentB3 ? 'Histórico de 3 meses da B3' : 'Até 1.000 candles'}</span>
+          </div>
         </div>
 
         <div className="indicator-toolbar" role="group" aria-label="Indicadores">

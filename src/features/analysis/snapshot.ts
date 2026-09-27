@@ -4,6 +4,8 @@ import type { Comparison } from '../market/comparison';
 import { calculateIndicators } from '../indicators/calculations';
 import type { IndicatorSettings } from '../settings/preferences';
 import { symbolSchema } from '../settings/preferences';
+import type { DerivativesSnapshot } from '../derivatives/types';
+export type { DerivativesSnapshot };
 
 const text = z.string().min(1).max(3000);
 export const analysisSchema = z.object({
@@ -43,6 +45,7 @@ export function buildSnapshot(
   now: number,
   orderBook: OrderBookSnapshot | null = null,
   userNotes?: string | null,
+  derivatives: DerivativesSnapshot | null = null,
 ) {
   symbolSchema.parse(symbol);
   const closed = candles.filter(c => c.closed);
@@ -63,6 +66,7 @@ export function buildSnapshot(
     comparison,
     orderBook,
     userNotes: sanitizedNotes,
+    derivatives,
   });
 }
 export type Snapshot = ReturnType<typeof buildSnapshot>;
