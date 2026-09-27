@@ -157,6 +157,7 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
   };
 
   const handleUpdatePane = useCallback((paneId: string, updates: Partial<ChartPaneConfig>) => {
+    setActivePaneId(paneId);
     setPanes(prev => {
       const next = prev.map(p => {
         if (updates.interval && syncIntervals) {
@@ -171,27 +172,29 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
       } catch {
         // ignore
       }
-      return next;
-    });
 
-    // Se o painel atualizado for o ativo, notifica o container superior
-    if (paneId === activePaneId) {
       if (updates.symbol || updates.interval) {
-        const target = panes.find(p => p.id === paneId);
+        const target = next.find(p => p.id === paneId);
         if (target) {
-          const newSymbol = updates.symbol || target.symbol;
-          const newInterval = updates.interval || target.interval;
-          lastReportedRef.current = { symbol: newSymbol, interval: newInterval };
-          onActiveSymbolChange(newSymbol, newInterval);
+          lastReportedRef.current = { symbol: target.symbol, interval: target.interval };
+          onActiveSymbolChange(target.symbol, target.interval);
         }
       }
-    }
-  }, [activePaneId, panes, syncIntervals, onActiveSymbolChange]);
 
-  const handleSelectPane = useCallback((pane: ChartPaneConfig) => {
-    setActivePaneId(pane.id);
-    lastReportedRef.current = { symbol: pane.symbol, interval: pane.interval };
-    onActiveSymbolChange(pane.symbol, pane.interval);
+      return next;
+    });
+  }, [syncIntervals, onActiveSymbolChange]);
+
+  const handleSelectPane = useCallback((paneId: string) => {
+    setActivePaneId(paneId);
+    setPanes(currentPanes => {
+      const target = currentPanes.find(p => p.id === paneId);
+      if (target) {
+        lastReportedRef.current = { symbol: target.symbol, interval: target.interval };
+        onActiveSymbolChange(target.symbol, target.interval);
+      }
+      return currentPanes;
+    });
   }, [onActiveSymbolChange]);
 
   const handleChartReady = useCallback((paneId: string, api: IChartApi | null) => {
@@ -388,7 +391,7 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
               pane={pane}
               isActive={pane.id === activePaneId}
               isMaximized={pane.id === maximizedPaneId}
-              onSelect={() => handleSelectPane(pane)}
+              onSelect={() => handleSelectPane(pane.id)}
               onUpdatePane={updates => handleUpdatePane(pane.id, updates)}
               onToggleMaximize={() => setMaximizedPaneId(prev => (prev === pane.id ? null : pane.id))}
               settings={settings}

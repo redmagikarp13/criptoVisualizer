@@ -899,6 +899,7 @@ export function App() {
       <AnalysisPanel
         symbol={preferences.symbol}
         interval={preferences.interval}
+        onSelectInterval={int => update({ interval: int })}
         candles={activeCandles}
         depth={isCurrentB3 ? null : market.depth}
         depths={isCurrentB3 ? undefined : market.depths}

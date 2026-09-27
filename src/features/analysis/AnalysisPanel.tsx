@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { errorMessage, type Candle, type CliStatus, type Exchange, type Interval, type OrderBook as OrderBookType } from '../../lib/types';
+import { errorMessage, intervals, type Candle, type CliStatus, type Exchange, type Interval, type OrderBook as OrderBookType } from '../../lib/types';
 import { desktop } from '../../lib/desktop';
 import { analysisSchema, buildSnapshot, type AnalysisRecord, type OrderBookSnapshot } from './snapshot';
 import type { Preferences } from '../settings/preferences';
@@ -7,11 +7,12 @@ import type { Comparison } from '../market/comparison';
 import { OrderBookView } from '../orderbook/OrderBook';
 import { analyzeOrderBookBots } from '../orderbook/botDetector';
 import { BookOpen, ChevronDown, ChevronUp, MessageSquare, Sparkles } from 'lucide-react';
-import { isB3Symbol } from '../../lib/symbol';
+import { isB3Symbol, pairLabel } from '../../lib/symbol';
 
 export interface AnalysisPanelProps {
   symbol: string;
   interval: Interval;
+  onSelectInterval?: (interval: Interval) => void;
   candles: Candle[];
   depth?: OrderBookType | null;
   depths?: Partial<Record<Exchange, OrderBookType>>;
@@ -29,6 +30,7 @@ export interface AnalysisPanelProps {
 export function AnalysisPanel({
   symbol,
   interval,
+  onSelectInterval,
   candles,
   depth,
   depths,
@@ -233,6 +235,46 @@ export function AnalysisPanel({
               <p>Uma leitura do mercado, no seu tempo.</p>
               <p className="muted">Até 100 candles fechados, com indicadores calculados sobre o histórico disponível. Nenhum arquivo pessoal é anexado pelo aplicativo.</p>
               <p className="muted"><strong>{preferences.agent === 'qoder' ? 'Qoder CLI' : 'Antigravity CLI'}</strong><br />{status?.message ?? 'Verificando disponibilidade da CLI…'}</p>
+
+              {/* Ativo e Tempo Gráfico da Análise */}
+              <div className="analysis-target-card">
+                <div className="analysis-target-header">
+                  <div className="analysis-target-asset">
+                    <span className="analysis-target-dot">●</span>
+                    <strong className="analysis-target-symbol">{isStock ? symbol : pairLabel(symbol)}</strong>
+                    {isStock && <span className="b3-tag">B3</span>}
+                  </div>
+                  <span className="analysis-target-time-badge" title="Tempo gráfico ativo">{interval}</span>
+                </div>
+
+                {!isStock && onSelectInterval && (
+                  <div className="analysis-intervals-row" role="group" aria-label="Tempo gráfico da análise">
+                    <span className="analysis-intervals-label">Tempo gráfico:</span>
+                    <div className="analysis-interval-buttons">
+                      {intervals.map(int => (
+                        <button
+                          key={int}
+                          type="button"
+                          className={`analysis-interval-btn ${interval === int ? 'active' : ''}`}
+                          onClick={() => onSelectInterval(int)}
+                          disabled={Boolean(running)}
+                          title={`Alterar tempo gráfico para ${int}`}
+                        >
+                          {int}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="analysis-target-footer">
+                  <span className="analysis-target-candles">
+                    {candles.filter(c => c.closed).length} candles fechados de {interval}
+                  </span>
+                  <span className="analysis-target-sync-hint">Sincronizado com o gráfico</span>
+                </div>
+              </div>
+
               <div className="ai-notes-container">
                 <div className="ai-notes-header">
                   <label htmlFor="ai-user-notes" className="ai-notes-label">

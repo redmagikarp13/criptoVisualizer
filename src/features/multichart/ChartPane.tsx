@@ -160,7 +160,11 @@ export const ChartPane = memo(function ChartPane({
               <select
                 className="pane-quick-symbol-dropdown"
                 value={pane.symbol}
-                onChange={e => onUpdatePane({ symbol: e.target.value })}
+                onClick={e => e.stopPropagation()}
+                onChange={e => {
+                  e.stopPropagation();
+                  onUpdatePane({ symbol: e.target.value });
+                }}
                 title="Trocar ativo rápido"
               >
                 {availableSymbols.map(sym => (
@@ -187,7 +191,10 @@ export const ChartPane = memo(function ChartPane({
                 key={int}
                 type="button"
                 className={`pane-interval-btn ${pane.interval === int ? 'active' : ''}`}
-                onClick={() => onUpdatePane({ interval: int })}
+                onClick={e => {
+                  e.stopPropagation();
+                  onUpdatePane({ interval: int });
+                }}
               >
                 {int}
               </button>

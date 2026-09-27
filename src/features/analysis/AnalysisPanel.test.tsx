@@ -49,3 +49,11 @@ it('envia observações do usuário no snapshot para a IA e exibe a observação
   expect(screen.getByText('Observação considerada:')).toBeInTheDocument();
 });
 
+it('permite alternar o tempo gráfico da análise diretamente no painel', async () => {
+  const onSelectInterval = vi.fn();
+  render(<AnalysisPanel {...props} interval="15m" onSelectInterval={onSelectInterval} />);
+  expect(screen.getByText('15m', { selector: '.analysis-target-time-badge' })).toBeInTheDocument();
+  const btn1h = screen.getByRole('button', { name: '1h' });
+  await userEvent.click(btn1h);
+  expect(onSelectInterval).toHaveBeenCalledWith('1h');
+});
