@@ -28,6 +28,7 @@ import {
   type DrawingTool,
   type TrendConvergence,
 } from './drawings';
+import { detectAutoTrendlines } from './autoTrendlines';
 import { Clock } from 'lucide-react';
 import { useCandleCountdown } from './useCandleCountdown';
 
@@ -114,10 +115,75 @@ export const MarketChart = memo(function MarketChart({
     });
   };
 
+  const [autoTrendlines, setAutoTrendlines] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('criptovisualizer:auto_trendlines');
+      return saved !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleAutoTrendlines = () => {
+    setAutoTrendlines(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('criptovisualizer:auto_trendlines', String(next));
+      } catch {
+        // ignore persistence failures
+      }
+      return next;
+    });
+  };
+
+  const autoTrendlinesResult = useMemo(() => {
+    if (!autoTrendlines || !candles.length) return null;
+    return detectAutoTrendlines(candles);
+  }, [autoTrendlines, candles]);
+
+  const activeLinesForConvergence = useMemo(() => {
+    const list = [...drawings];
+    if (autoTrendlines && autoTrendlinesResult) {
+      if (autoTrendlinesResult.resistance) list.push(autoTrendlinesResult.resistance);
+      if (autoTrendlinesResult.support) list.push(autoTrendlinesResult.support);
+    }
+    return list;
+  }, [drawings, autoTrendlines, autoTrendlinesResult]);
+
   const convergences = useMemo(() => {
     if (!projectLines) return [];
-    return findTrendlinesConvergence(drawings);
-  }, [projectLines, drawings]);
+    return findTrendlinesConvergence(activeLinesForConvergence);
+  }, [projectLines, activeLinesForConvergence]);
+
+  const handlePinAutoTrendlines = () => {
+    if (!autoTrendlinesResult) return;
+    const toAdd: Drawing[] = [];
+    if (autoTrendlinesResult.resistance) {
+      toAdd.push({
+        ...autoTrendlinesResult.resistance,
+        id: crypto.randomUUID(),
+      });
+    }
+    if (autoTrendlinesResult.support) {
+      toAdd.push({
+        ...autoTrendlinesResult.support,
+        id: crypto.randomUUID(),
+      });
+    }
+    if (toAdd.length > 0) {
+      setDrawings(prev => {
+        const next = [...prev, ...toAdd];
+        if (symbol) saveDrawings(symbol, next);
+        return next;
+      });
+      setAutoTrendlines(false);
+      try {
+        localStorage.setItem('criptovisualizer:auto_trendlines', 'false');
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   const handleFocusApex = (c: TrendConvergence) => {
     if (!chart.current || !candles.length) return;
@@ -505,6 +571,8 @@ export const MarketChart = memo(function MarketChart({
           projectLines={projectLines}
           onToggleProjectLines={handleToggleProjectLines}
           convergencesCount={convergences.length}
+          autoTrendlines={autoTrendlines}
+          onToggleAutoTrendlines={handleToggleAutoTrendlines}
         />
       )}
 
@@ -528,6 +596,16 @@ export const MarketChart = memo(function MarketChart({
             >
               Ver Ápice
             </button>
+            {autoTrendlines && autoTrendlinesResult && (autoTrendlinesResult.resistance || autoTrendlinesResult.support) && (
+              <button
+                type="button"
+                className="trend-convergence-pin-btn"
+                onClick={handlePinAutoTrendlines}
+                title="Fixar linhas de tendência automáticas como desenhos editáveis no gráfico"
+              >
+                Fixar Linhas
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -553,6 +631,7 @@ export const MarketChart = memo(function MarketChart({
         candles={candles}
         projectLines={projectLines}
         convergences={convergences}
+        autoTrendlines={autoTrendlines ? autoTrendlinesResult : null}
       />
 
       <span className="sr-only">

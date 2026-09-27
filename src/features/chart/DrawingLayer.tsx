@@ -8,6 +8,7 @@ import {
   type Point,
   type TrendConvergence,
 } from './drawings';
+import type { AutoTrendlinesResult } from './autoTrendlines';
 
 interface DrawingLayerProps {
   chart: IChartApi | null;
@@ -21,6 +22,7 @@ interface DrawingLayerProps {
   candles?: Candle[];
   projectLines?: boolean;
   convergences?: TrendConvergence[];
+  autoTrendlines?: AutoTrendlinesResult | null;
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -35,6 +37,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   candles,
   projectLines = true,
   convergences = [],
+  autoTrendlines,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [draftStart, setDraftStart] = useState<Point | null>(null);
@@ -139,7 +142,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     };
 
     // Helper: Desenha Linha de Tendência e Projeção Futura
-    const drawTrendline = (p1: Point, p2: Point, color: string, isDraft = false) => {
+    const drawTrendline = (p1: Point, p2: Point, color: string, isDraft = false, label?: string) => {
       const [start, end] = p1.time <= p2.time ? [p1, p2] : [p2, p1];
       const c1 = getCoordinates(start);
       const c2 = getCoordinates(end);
@@ -172,6 +175,29 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       ctx.fillStyle = color;
       ctx.arc(x2, y2, 4, 0, Math.PI * 2);
       ctx.fill();
+
+      // Etiqueta identificadora (ex: Auto LTB, Auto LTA)
+      if (label) {
+        ctx.font = 'bold 9px -apple-system, BlinkMacSystemFont, sans-serif';
+        const tagW = ctx.measureText(label).width + 12;
+        const tagH = 16;
+        const tagX = Math.min(Math.max((x1 + x2) / 2 - tagW / 2, 8), rect.width - tagW - 60);
+        const tagY = (y1 + y2) / 2 - tagH - 4;
+
+        ctx.fillStyle = dark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.92)';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.roundRect(tagX, tagY, tagW, tagH, 3);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, tagX + tagW / 2, tagY + tagH / 2);
+      }
 
       // 2. Projeção Futura (Ray / Linha estendida para a direita)
       if (projectLines && !isDraft) {
@@ -382,13 +408,35 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       else if (d.type === 'measure') drawMeasure(d.p1, d.p2);
     }
 
-    // 2. Renderizar rascunho em tempo real
+    // 2. Renderizar linhas de tendência automáticas se ativas
+    if (autoTrendlines) {
+      if (autoTrendlines.resistance) {
+        drawTrendline(
+          autoTrendlines.resistance.p1,
+          autoTrendlines.resistance.p2,
+          autoTrendlines.resistance.color,
+          false,
+          'Auto LTB'
+        );
+      }
+      if (autoTrendlines.support) {
+        drawTrendline(
+          autoTrendlines.support.p1,
+          autoTrendlines.support.p2,
+          autoTrendlines.support.color,
+          false,
+          'Auto LTA'
+        );
+      }
+    }
+
+    // 3. Renderizar rascunho em tempo real
     if (draftStart && draftCurrent) {
       if (activeTool === 'trendline') drawTrendline(draftStart, draftCurrent, currentColor, true);
       else if (activeTool === 'measure') drawMeasure(draftStart, draftCurrent);
     }
 
-    // 3. Renderizar alvos de ápice / confluência futura se projeção estiver ativa
+    // 4. Renderizar alvos de ápice / confluência futura se projeção estiver ativa
     if (projectLines && convergences && convergences.length > 0) {
       for (const c of convergences) {
         drawConvergenceApex(c);
@@ -405,6 +453,7 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     dark,
     projectLines,
     convergences,
+    autoTrendlines,
     getCoordinates,
   ]);
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MousePointer, TrendingUp, Minus, SeparatorVertical, Ruler, Trash2, Compass } from 'lucide-react';
+import { MousePointer, TrendingUp, Minus, SeparatorVertical, Ruler, Trash2, Compass, Sparkles } from 'lucide-react';
 import type { DrawingTool } from './drawings';
 
 interface DrawingToolbarProps {
@@ -12,6 +12,8 @@ interface DrawingToolbarProps {
   projectLines?: boolean;
   onToggleProjectLines?: () => void;
   convergencesCount?: number;
+  autoTrendlines?: boolean;
+  onToggleAutoTrendlines?: () => void;
 }
 
 const COLORS = [
@@ -33,6 +35,8 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
   projectLines = true,
   onToggleProjectLines,
   convergencesCount = 0,
+  autoTrendlines = true,
+  onToggleAutoTrendlines,
 }) => {
   return (
     <div className="drawing-toolbar" role="toolbar" aria-label="Ferramentas de Desenho">
@@ -71,6 +75,17 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
                 title={`${convergencesCount} ponto(s) de convergência previsto(s)`}
               />
             )}
+          </button>
+        )}
+        {onToggleAutoTrendlines && (
+          <button
+            type="button"
+            className={`drawing-tool-btn ${autoTrendlines ? 'active' : ''}`}
+            onClick={onToggleAutoTrendlines}
+            title={`Linhas de Tendência Automáticas (Topos e Fundos) - ${autoTrendlines ? 'Ativadas' : 'Desativadas'}`}
+            aria-label="Linhas de Tendência Automáticas"
+          >
+            <Sparkles size={15} />
           </button>
         )}
         <button
