@@ -227,6 +227,10 @@ export function App() {
   }, [preferences.symbol, preferences.brapiToken, isCurrentB3, brStocksRefresh]);
 
   const activeCandles = isCurrentB3 ? (market.candles.length ? market.candles : stockCandles) : market.candles;
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  useEffect(() => {
+    if (activeCandles.length > 0) setHasLoadedOnce(true);
+  }, [activeCandles.length]);
   const indicators = useIndicators(activeCandles, preferences.indicators);
 
   // Busca unificada com debounce para ações B3
@@ -751,7 +755,7 @@ export function App() {
           style={chartHeight ? { height: `${chartHeight}px`, flex: 'none' } : undefined}
           aria-label={`Grade de gráficos ${pair(preferences.symbol)}`}
         >
-          {activeCandles.length ? (
+          {hasLoadedOnce || activeCandles.length ? (
             <MultiChartGrid
               primarySymbol={preferences.symbol}
               primaryInterval={preferences.interval}

@@ -86,13 +86,13 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
     }
   });
 
-  // Sincronização de tempos gráficos (timeframes) entre todos os gráficos
+  // Sincronização de tempos gráficos (timeframes) entre todos os gráficos (padrão true para responder à barra superior do app)
   const [syncIntervals, setSyncIntervals] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('criptovisualizer:sync-intervals');
-      return saved !== null ? saved === 'true' : false;
+      return saved !== null ? saved === 'true' : true;
     } catch {
-      return false;
+      return true;
     }
   });
 
@@ -104,14 +104,11 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
   const unsubscribers = useRef<Map<string, () => void>>(new Map());
 
   // Registra o último símbolo/intervalo reportado por este grid para evitar loops de eco com o App.tsx
-  const lastReportedRef = useRef<{ symbol: string; interval: Interval } | null>({
-    symbol: primarySymbol,
-    interval: primaryInterval,
-  });
+  const lastReportedRef = useRef<{ symbol: string; interval: Interval } | null>(null);
 
-  // Sincroniza o painel ativo SOMENTE com alterações externas genuínas (ex: favoritos da barra lateral ou busca no topo)
+  // Sincroniza os painéis com alterações externas (ex: toolbar de intervalos do topo, favoritos ou busca)
   useEffect(() => {
-    // Se primarySymbol e primaryInterval coincidem com o que o grid reportou, é apenas o eco de seleção. Não alteramos nada!
+    // Se primarySymbol e primaryInterval coincidem com o que este grid acabou de reportar via clique interno, é apenas o eco de retorno do App.tsx
     if (
       lastReportedRef.current &&
       lastReportedRef.current.symbol === primarySymbol &&
@@ -125,12 +122,17 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
     setPanes(prev => {
       let changed = false;
       const next = prev.map(p => {
-        // Altera ESTRITAMENTE o painel atualmente ativo
-        if (p.id === activePaneId) {
-          if (p.symbol !== primarySymbol || p.interval !== primaryInterval) {
-            changed = true;
-            return { ...p, symbol: primarySymbol, interval: primaryInterval };
-          }
+        // Se syncIntervals estiver ativado, todos os painéis mudam para o novo tempo gráfico!
+        // Se não, o painel atualmente ativo muda para o novo tempo gráfico.
+        const shouldUpdateInterval = syncIntervals || p.id === activePaneId;
+        const shouldUpdateSymbol = p.id === activePaneId;
+
+        const nextInterval = shouldUpdateInterval ? primaryInterval : p.interval;
+        const nextSymbol = shouldUpdateSymbol ? primarySymbol : p.symbol;
+
+        if (p.symbol !== nextSymbol || p.interval !== nextInterval) {
+          changed = true;
+          return { ...p, symbol: nextSymbol, interval: nextInterval };
         }
         return p;
       });
@@ -144,7 +146,7 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
       }
       return next;
     });
-  }, [primarySymbol, primaryInterval, activePaneId]);
+  }, [primarySymbol, primaryInterval, activePaneId, syncIntervals]);
 
   const handleSelectLayout = (newLayout: ChartLayout) => {
     setLayout(newLayout);

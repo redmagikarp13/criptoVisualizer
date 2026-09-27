@@ -173,6 +173,40 @@ describe('MultiChartGrid e pipeline de indicadores', () => {
     expect(countdownPill).toBeInTheDocument();
     expect(countdownPill?.textContent).toMatch(/\d{2}:\d{2}/);
   });
+
+  it('atualiza os tempos gráficos ao receber novo primaryInterval da barra superior do app', async () => {
+    marketChartProps.length = 0;
+    const { rerender } = render(
+      <MultiChartGrid
+        primarySymbol="BTCUSDT"
+        primaryInterval="15m"
+        primaryCandles={[{ time: 60, open: 10, high: 12, low: 9, close: 11, volume: 2, closed: true }]}
+        primaryIndicators={null}
+        settings={defaultPreferences.indicators}
+        dark={true}
+        availableSymbols={['BTCUSDT', 'ETHUSDT']}
+        onActiveSymbolChange={() => {}}
+      />,
+    );
+
+    expect(marketChartProps.at(-1)?.interval).toBe('15m');
+
+    // Simula o clique em '1h' na toolbar principal do app
+    rerender(
+      <MultiChartGrid
+        primarySymbol="BTCUSDT"
+        primaryInterval="1h"
+        primaryCandles={[{ time: 60, open: 10, high: 12, low: 9, close: 11, volume: 2, closed: true }]}
+        primaryIndicators={null}
+        settings={defaultPreferences.indicators}
+        dark={true}
+        availableSymbols={['BTCUSDT', 'ETHUSDT']}
+        onActiveSymbolChange={() => {}}
+      />,
+    );
+
+    expect(marketChartProps.at(-1)?.interval).toBe('1h');
+  });
 });
 
 
