@@ -42,12 +42,14 @@ export function buildSnapshot(
   comparison: Comparison | null,
   now: number,
   orderBook: OrderBookSnapshot | null = null,
+  userNotes?: string | null,
 ) {
   symbolSchema.parse(symbol);
   const closed = candles.filter(c => c.closed);
   if (closed.length === 0) throw new Error('Aguarde o histórico de candles fechados antes de analisar.');
   const values = calculateIndicators(closed, settings);
   const last = (series: (number | null)[]) => series.at(-1) ?? null;
+  const sanitizedNotes = userNotes && userNotes.trim().length > 0 ? userNotes.trim().slice(0, 1000) : null;
   return structuredClone({
     symbol, interval, exchange: 'binance' as const, capturedAt: now,
     candles: closed.slice(-100),
@@ -60,6 +62,7 @@ export function buildSnapshot(
     },
     comparison,
     orderBook,
+    userNotes: sanitizedNotes,
   });
 }
 export type Snapshot = ReturnType<typeof buildSnapshot>;

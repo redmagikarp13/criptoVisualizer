@@ -39,6 +39,20 @@ describe('snapshot da análise', () => {
     };
     const snapshot = buildSnapshot('BTCUSDT', '1m', candles, defaultPreferences.indicators, null, 1_700_008_000_000, obData);
     expect(snapshot.orderBook).toEqual(obData);
+    expect(snapshot.userNotes).toBeNull();
+  });
+  it('inclui observações do usuário quando fornecidas e remove espaços excedentes', () => {
+    const snapshot = buildSnapshot(
+      'BTCUSDT',
+      '1m',
+      candles,
+      defaultPreferences.indicators,
+      null,
+      1_700_008_000_000,
+      null,
+      '  Vendi a 64200 e quero saber se recompro  ',
+    );
+    expect(snapshot.userNotes).toBe('Vendi a 64200 e quero saber se recompro');
   });
   it('recusa análise sem candles fechados', () => {
     expect(() => buildSnapshot('BTCUSDT', '1m', [], defaultPreferences.indicators, null, Date.now())).toThrow();

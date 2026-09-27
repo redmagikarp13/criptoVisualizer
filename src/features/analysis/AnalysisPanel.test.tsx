@@ -34,3 +34,18 @@ it('não repete erros da CLI automaticamente e recupera o botão', async () => {
   expect(screen.getByRole('button', { name: 'Analisar com IA' })).toBeEnabled();
   expect(fake.analyze).toHaveBeenCalledTimes(1);
 });
+it('envia observações do usuário no snapshot para a IA e exibe a observação no resultado', async () => {
+  fake.analyze.mockImplementation((_id: string, _agent: string, snapshot: Snapshot) => {
+    expect(snapshot.userNotes).toBe('Vendi em 65000');
+    return Promise.resolve({ analysis, model: 'test-model' });
+  });
+  render(<AnalysisPanel {...props} />);
+  const user = userEvent.setup();
+  const textarea = screen.getByRole('textbox', { name: /Observações para a IA/i });
+  await user.type(textarea, 'Vendi em 65000');
+  await user.click(screen.getByRole('button', { name: 'Analisar com IA' }));
+  expect(fake.analyze).toHaveBeenCalledTimes(1);
+  expect(await screen.findByText('"Vendi em 65000"')).toBeInTheDocument();
+  expect(screen.getByText('Observação considerada:')).toBeInTheDocument();
+});
+

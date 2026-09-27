@@ -131,10 +131,23 @@ fn valid_orderbook(ob: &Value) -> bool {
 }
 pub fn build_prompt(snapshot: &Value) -> Result<String> {
     let bad = snapshot_error;
-    let allowed_without = ["symbol","interval","exchange","capturedAt","candles","historyLength","parameters","indicators","comparison"];
-    let allowed_with = ["symbol","interval","exchange","capturedAt","candles","historyLength","parameters","indicators","comparison","orderBook"];
-    let has_ob = keys(snapshot, &allowed_with);
-    if !has_ob && !keys(snapshot, &allowed_without) { return Err(bad()); }
+    let map = snapshot.as_object().ok_or_else(bad)?;
+    let required = ["symbol","interval","exchange","capturedAt","candles","historyLength","parameters","indicators","comparison"];
+    if !required.iter().all(|k| map.contains_key(*k)) { return Err(bad()); }
+    for key in map.keys() {
+        if !required.contains(&key.as_str()) && key != "orderBook" && key != "userNotes" {
+            return Err(bad());
+        }
+    }
+    let has_ob = map.contains_key("orderBook");
+    if let Some(notes) = map.get("userNotes") {
+        if !notes.is_null() {
+            let s = notes.as_str().ok_or_else(bad)?;
+            if s.chars().count() > 1000 || s.chars().any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t') {
+                return Err(bad());
+            }
+        }
+    }
     let symbol = snapshot["symbol"].as_str().ok_or_else(bad)?;
     let interval = snapshot["interval"].as_str().ok_or_else(bad)?;
     let now = snapshot["capturedAt"].as_u64().ok_or_else(bad)?;
@@ -160,7 +173,12 @@ pub fn build_prompt(snapshot: &Value) -> Result<String> {
         || !indicators.as_object().unwrap().values().all(|v| v.is_null() || v.as_f64().is_some_and(f64::is_finite))
         || !valid_comparison(&snapshot["comparison"], symbol, now) { return Err(bad()); }
     if has_ob && !valid_orderbook(&snapshot["orderBook"]) { return Err(bad()); }
-    let prompt = format!("Analise somente os dados públicos de mercado a seguir. Responda em português, somente com um objeto JSON conforme o esquema. Não use ferramentas, arquivos, rede adicional ou comandos. Não execute operações financeiras. Descreva tendência observada, evidências com valores, cenários condicionais, riscos e limitações. Não invente probabilidades nem certezas sobre preços futuros. Dados insuficientes e aquecimento nulo devem ser explicitados. A comparação usa últimos negócios, não ofertas executáveis; não inclui taxas, liquidez ou transferências. Se fornecido o orderBook (livro de ofertas e detector de robôs), considere se os robôs estão forçando o preço para cima ou para baixo, as paredes de liquidez dos market makers, o balanceamento de pressão institucional e indícios de spoofing ou HFT no curto prazo.\nESQUEMA:\n{}\nSNAPSHOT:\n{}", analysis_schema(), snapshot);
+    let notes_instruction = if let Some(notes) = snapshot.get("userNotes").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()) {
+        format!(" O usuário incluiu as seguintes observações/dúvidas sobre sua posição ou operação: \"{}\". Considere e responda diretamente a essas observações no resumo, cenários condicionais e riscos da análise.", notes)
+    } else {
+        String::new()
+    };
+    let prompt = format!("Analise somente os dados públicos de mercado a seguir. Responda em português, somente com um objeto JSON conforme o esquema. Não use ferramentas, arquivos, rede adicional ou comandos. Não execute operações financeiras. Descreva tendência observada, evidências com valores, cenários condicionais, riscos e limitações. Não invente probabilidades nem certezas sobre preços futuros. Dados insuficientes e aquecimento nulo devem ser explicitados. A comparação usa últimos negócios, não ofertas executáveis; não inclui taxas, liquidez ou transferências. Se fornecido o orderBook (livro de ofertas e detector de robôs), considere se os robôs estão forçando o preço para cima ou para baixo, as paredes de liquidez dos market makers, o balanceamento de pressão institucional e indícios de spoofing ou HFT no curto prazo.{}\nESQUEMA:\n{}\nSNAPSHOT:\n{}", notes_instruction, analysis_schema(), snapshot);
     if prompt.len() > 64 * 1024 { return Err(AppError::new("prompt_limit", "O snapshot excedeu o limite de 64 KiB.")); }
     Ok(prompt)
 }

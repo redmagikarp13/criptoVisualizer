@@ -170,6 +170,25 @@ fn prompt_recusa_payload_arbitrario_ou_candle_aberto() {
     assert!(build_prompt(&ob_snapshot).unwrap().contains("orderBook"));
     ob_snapshot["orderBook"]["botBias"] = json!("invalido");
     assert!(build_prompt(&ob_snapshot).is_err());
+
+    let mut notes_snapshot = snapshot.clone();
+    notes_snapshot.as_object_mut().unwrap().remove("personalFiles");
+    notes_snapshot["userNotes"] = json!("Vendi a 65000, devo recomprar?");
+    let prompt = build_prompt(&notes_snapshot).unwrap();
+    assert!(prompt.contains("Vendi a 65000, devo recomprar?"));
+    assert!(prompt.contains("observações/dúvidas sobre sua posição"));
+
+    notes_snapshot["userNotes"] = json!(null);
+    assert!(build_prompt(&notes_snapshot).is_ok());
+
+    notes_snapshot["userNotes"] = json!("a".repeat(1001));
+    assert!(build_prompt(&notes_snapshot).is_err());
+
+    notes_snapshot["userNotes"] = json!("texto com \0 nulo");
+    assert!(build_prompt(&notes_snapshot).is_err());
+
+    notes_snapshot["userNotes"] = json!(12345);
+    assert!(build_prompt(&notes_snapshot).is_err());
 }
 fn spec(args: Vec<String>) -> ProcessSpec {
     ProcessSpec { executable: PathBuf::from(env!("CARGO_BIN_EXE_fake-agent")), args, input: b"entrada".to_vec(), cwd: std::env::temp_dir(), timeout: Duration::from_secs(10), max_output: 1024 }

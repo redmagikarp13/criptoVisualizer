@@ -6,7 +6,7 @@ import type { Preferences } from '../settings/preferences';
 import type { Comparison } from '../market/comparison';
 import { OrderBookView } from '../orderbook/OrderBook';
 import { analyzeOrderBookBots } from '../orderbook/botDetector';
-import { BookOpen, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, MessageSquare, Sparkles } from 'lucide-react';
 import { isB3Symbol } from '../../lib/symbol';
 
 export interface AnalysisPanelProps {
@@ -72,6 +72,22 @@ export function AnalysisPanel({
   const [running, setRunning] = useState<{ id: string; symbol: string; interval: Interval } | null>(null);
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [userNotes, setUserNotes] = useState(() => {
+    try {
+      return localStorage.getItem('criptovisualizer:ai-notes') ?? '';
+    } catch {
+      return '';
+    }
+  });
+
+  const handleNotesChange = (val: string) => {
+    setUserNotes(val);
+    try {
+      localStorage.setItem('criptovisualizer:ai-notes', val);
+    } catch {
+      // Ignora erro de localStorage
+    }
+  };
   const current = useRef<string | null>(null);
   const active = useRef(true);
 
@@ -128,7 +144,7 @@ export function AnalysisPanel({
         };
       }
 
-      const snapshot = buildSnapshot(symbol, interval, candles, preferences.indicators, comparison, Date.now(), orderBookSnapshot);
+      const snapshot = buildSnapshot(symbol, interval, candles, preferences.indicators, comparison, Date.now(), orderBookSnapshot, userNotes);
       const result = await desktop.analyze(id, preferences.agent, snapshot);
       const analysis = analysisSchema.parse(result.analysis);
       if (active.current) setRecord({ id, agent: preferences.agent, model: result.model, snapshot, analysis, completedAt: Date.now() });
@@ -217,6 +233,63 @@ export function AnalysisPanel({
               <p>Uma leitura do mercado, no seu tempo.</p>
               <p className="muted">Até 100 candles fechados, com indicadores calculados sobre o histórico disponível. Nenhum arquivo pessoal é anexado pelo aplicativo.</p>
               <p className="muted"><strong>{preferences.agent === 'qoder' ? 'Qoder CLI' : 'Antigravity CLI'}</strong><br />{status?.message ?? 'Verificando disponibilidade da CLI…'}</p>
+              <div className="ai-notes-container">
+                <div className="ai-notes-header">
+                  <label htmlFor="ai-user-notes" className="ai-notes-label">
+                    <MessageSquare size={13} />
+                    <span>Observações para a IA (opcional)</span>
+                  </label>
+                  {userNotes && (
+                    <button
+                      type="button"
+                      className="ai-notes-clear"
+                      onClick={() => handleNotesChange('')}
+                      title="Limpar observações"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  id="ai-user-notes"
+                  className="ai-notes-textarea"
+                  value={userNotes}
+                  onChange={e => handleNotesChange(e.target.value.slice(0, 1000))}
+                  placeholder="Ex: Vendi em 64.200, onde recomprar? / Comprei com stop em 63.500 / Devo realizar lucro agora?"
+                  rows={3}
+                  maxLength={1000}
+                  disabled={Boolean(running)}
+                />
+                <div className="ai-notes-footer">
+                  <span>{userNotes.length}/1000 caracteres</span>
+                </div>
+                <div className="ai-notes-chips">
+                  <button
+                    type="button"
+                    className="ai-notes-chip"
+                    onClick={() => handleNotesChange('Vendi em [preço]. Devo recomprar ou aguardar recuo?')}
+                    disabled={Boolean(running)}
+                  >
+                    + Vendi em...
+                  </button>
+                  <button
+                    type="button"
+                    className="ai-notes-chip"
+                    onClick={() => handleNotesChange('Comprei em [preço] com stop em [stop]. Vale a pena manter?')}
+                    disabled={Boolean(running)}
+                  >
+                    + Comprei em...
+                  </button>
+                  <button
+                    type="button"
+                    className="ai-notes-chip"
+                    onClick={() => handleNotesChange('Estou de fora / líquido. Qual o melhor ponto ou gatilho para entrada?')}
+                    disabled={Boolean(running)}
+                  >
+                    + Estou de fora
+                  </button>
+                </div>
+              </div>
               {running ? (
                 <>
                   <p role="status">Analisando {running.symbol} · {running.interval}. Limite de 180 segundos.</p>
@@ -233,6 +306,15 @@ export function AnalysisPanel({
               <article className="analysis-result" aria-label="Resultado da análise">
                 {mismatch && <p className="notice">Esta análise pertence a outro par ou período. O snapshot original foi preservado.</p>}
                 <div className="snapshot-label">{record.agent === 'qoder' ? 'Qoder' : 'Antigravity'} · {record.model ?? 'Modelo não informado pela CLI'}<br />{record.snapshot.symbol} · {record.snapshot.interval} · Binance<br />Snapshot: {new Date(record.snapshot.capturedAt).toLocaleString('pt-BR')}</div>
+                {record.snapshot.userNotes && (
+                  <div className="analysis-user-notes-pill">
+                    <MessageSquare size={14} />
+                    <div className="notes-pill-content">
+                      <span className="notes-pill-label">Observação considerada:</span>
+                      <p className="notes-pill-text">"{record.snapshot.userNotes}"</p>
+                    </div>
+                  </div>
+                )}
                 <h3>Resumo</h3><p>{record.analysis.summary}</p><p>Tendência observada: <strong>{record.analysis.trend}</strong></p>
                 <h3>Evidências</h3><ul>{record.analysis.evidence.map((text, index) => <li key={index}>{text}</li>)}</ul>
                 <h3>Cenários condicionais</h3>{record.analysis.scenarios.map((scenario, index) => <p key={index}><strong>{scenario.condition}</strong><br />{scenario.interpretation}</p>)}
