@@ -12,13 +12,15 @@ import {
   type SeriesType,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import type { Candle } from '../../lib/types';
+import type { Candle, Interval } from '../../lib/types';
 import { heikinAshi, type IndicatorResult } from '../indicators/calculations';
 import type { IndicatorSettings } from '../settings/preferences';
 import { seriesPatch, type TimedPoint } from './series';
 import { DrawingLayer } from './DrawingLayer';
 import { DrawingToolbar } from './DrawingToolbar';
 import { clearDrawings, loadDrawings, saveDrawings, type Drawing, type DrawingTool } from './drawings';
+import { Clock } from 'lucide-react';
+import { useCandleCountdown } from './useCandleCountdown';
 
 export type ChartViewType = 'candles' | 'heikin_ashi' | 'line' | 'area' | 'bars';
 
@@ -31,6 +33,7 @@ interface Props {
   dark: boolean;
   chartType?: ChartViewType;
   symbol?: string;
+  interval?: Interval;
   showToolbar?: boolean;
   onChartReady?: (api: IChartApi | null) => void;
 }
@@ -57,6 +60,7 @@ export const MarketChart = memo(function MarketChart({
   dark,
   chartType = 'candles',
   symbol = '',
+  interval,
   showToolbar = true,
   onChartReady,
 }: Props) {
@@ -71,6 +75,10 @@ export const MarketChart = memo(function MarketChart({
   const previous = useRef(new Map<string, ChartPoint[]>());
   const initialized = useRef(false);
   const [error, setError] = useState('');
+
+  // Contador de tempo para fechamento do candle
+  const last = candles.at(-1);
+  const countdown = useCandleCountdown(interval || '15m', last?.time);
 
   // Estado de ferramentas de desenho
   const [drawings, setDrawings] = useState<Drawing[]>(() => (symbol ? loadDrawings(symbol) : []));
@@ -435,8 +443,6 @@ export const MarketChart = memo(function MarketChart({
     settings.stochastic,
   ]);
 
-  const last = candles.at(-1);
-
   return (
     <div className="market-chart-wrapper" style={{ position: 'relative', width: '100%', height: '100%' }}>
       {showToolbar && (
@@ -451,6 +457,13 @@ export const MarketChart = memo(function MarketChart({
       )}
 
       <div className="chart-canvas" ref={container} style={{ width: '100%', height: '100%' }} />
+
+      {interval && (
+        <div className="candle-countdown-overlay" title={`Tempo restante para a vela de ${interval} fechar`}>
+          <Clock size={11} aria-hidden="true" />
+          <span>{countdown}</span>
+        </div>
+      )}
 
       <DrawingLayer
         chart={chartReadyApi}

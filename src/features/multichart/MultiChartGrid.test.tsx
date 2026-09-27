@@ -80,7 +80,7 @@ describe('MultiChartGrid e pipeline de indicadores', () => {
     const { fireEvent } = await import('@testing-library/react');
     const onActiveSymbolChange = vi.fn();
 
-    render(
+    const { rerender } = render(
       <MultiChartGrid
         primarySymbol="BTCUSDT"
         primaryInterval="15m"
@@ -113,10 +113,66 @@ describe('MultiChartGrid e pipeline de indicadores', () => {
     // onActiveSymbolChange deve ser chamado com o símbolo do último painel e seu intervalo
     expect(onActiveSymbolChange).toHaveBeenCalledWith(lastSymbol, '15m');
 
-    // Os gráficos renderizados continuam com seus símbolos distintos, o 1º não virou o último!
+    // Simula o re-render vindo do App.tsx quando preferences.symbol atualiza para lastSymbol (eco do parent)
+    rerender(
+      <MultiChartGrid
+        primarySymbol={lastSymbol!}
+        primaryInterval="15m"
+        primaryCandles={[{ time: 60, open: 10, high: 12, low: 9, close: 11, volume: 2, closed: true }]}
+        primaryIndicators={null}
+        settings={defaultPreferences.indicators}
+        dark={true}
+        availableSymbols={['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']}
+        onActiveSymbolChange={onActiveSymbolChange}
+      />,
+    );
+
+    // O 1º gráfico CONTINUA SENDO BTCUSDT, nunca é sobrescrito pelo eco do parent!
     const updatedCharts = screen.getAllByTestId('market-chart');
     expect(updatedCharts[0].getAttribute('data-symbol')).toBe('BTCUSDT');
     expect(updatedCharts[3].getAttribute('data-symbol')).toBe(lastSymbol);
   });
+
+  it('permite alternar e usar a sincronização de tempos gráficos (timeframe)', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    render(
+      <MultiChartGrid
+        primarySymbol="BTCUSDT"
+        primaryInterval="15m"
+        primaryCandles={[{ time: 60, open: 10, high: 12, low: 9, close: 11, volume: 2, closed: true }]}
+        primaryIndicators={null}
+        settings={defaultPreferences.indicators}
+        dark={true}
+        availableSymbols={['BTCUSDT', 'ETHUSDT']}
+        onActiveSymbolChange={() => {}}
+      />,
+    );
+
+    const syncTimeBtn = screen.getByRole('button', { name: /Tempo Sincronizado|Tempo Independente/i });
+    expect(syncTimeBtn).toBeInTheDocument();
+    const initialText = syncTimeBtn.textContent;
+    fireEvent.click(syncTimeBtn);
+    expect(syncTimeBtn.textContent).not.toBe(initialText);
+  });
+
+  it('exibe o contador regressivo de tempo de fechamento da vela em cada painel', async () => {
+    render(
+      <MultiChartGrid
+        primarySymbol="BTCUSDT"
+        primaryInterval="15m"
+        primaryCandles={[{ time: 60, open: 10, high: 12, low: 9, close: 11, volume: 2, closed: true }]}
+        primaryIndicators={null}
+        settings={defaultPreferences.indicators}
+        dark={true}
+        availableSymbols={['BTCUSDT', 'ETHUSDT']}
+        onActiveSymbolChange={() => {}}
+      />,
+    );
+
+    const countdownPill = document.querySelector('.pane-countdown-pill');
+    expect(countdownPill).toBeInTheDocument();
+    expect(countdownPill?.textContent).toMatch(/\d{2}:\d{2}/);
+  });
 });
+
 

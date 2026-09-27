@@ -1,13 +1,15 @@
-import React, { memo, useState } from 'react';
-import { Maximize2, Minimize2, Activity } from 'lucide-react';
-import type { Candle } from '../../lib/types';
+import React, { memo, useState, useEffect } from 'react';
+import { Maximize2, Minimize2, Activity, Clock } from 'lucide-react';
+import type { Candle, Interval } from '../../lib/types';
 import type { IChartApi } from 'lightweight-charts';
 import { intervals } from '../../lib/types';
 import type { IndicatorSettings } from '../settings/preferences';
 import { MarketChart, type ChartViewType } from '../chart/MarketChart';
 import { useMarket } from '../market/useMarket';
 import { useIndicators } from '../indicators/useIndicators';
+import { useCandleCountdown } from '../chart/useCandleCountdown';
 import { isB3Symbol, pairLabel } from '../../lib/symbol';
+import { desktop } from '../../lib/desktop';
 import type { IndicatorResult } from '../indicators/calculations';
 import type { ChartPaneConfig } from './types';
 
@@ -22,6 +24,8 @@ interface ChartPaneProps {
   dark: boolean;
   availableSymbols: string[];
   isPrimary: boolean;
+  primarySymbol?: string;
+  primaryInterval?: Interval;
   primaryCandles: Candle[];
   primaryIndicators?: IndicatorResult | null;
   onChartReady?: (paneId: string, api: IChartApi | null) => void;
@@ -38,6 +42,8 @@ export const ChartPane = memo(function ChartPane({
   dark,
   availableSymbols,
   isPrimary,
+  primarySymbol,
+  primaryInterval,
   primaryCandles,
   primaryIndicators = null,
   onChartReady,
@@ -45,18 +51,37 @@ export const ChartPane = memo(function ChartPane({
   const [isEditingSymbol, setIsEditingSymbol] = useState(false);
   const [symbolInput, setSymbolInput] = useState(pane.symbol);
 
-  // Se este painel for o primário e tiver o mesmo símbolo/intervalo, reutiliza os candles
-  const usePrimaryStream = isPrimary;
-
-  // Stream isolado para painéis adicionais
-  const secondaryMarket = useMarket(pane.symbol, pane.interval, [], !usePrimaryStream);
-  const secondaryIndicators = useIndicators(usePrimaryStream ? [] : secondaryMarket.candles, settings);
-
-  const activeCandles = usePrimaryStream ? primaryCandles : secondaryMarket.candles;
-  const activeIndicators = usePrimaryStream ? (primaryIndicators ?? null) : secondaryIndicators.result;
-
-
   const isB3 = isB3Symbol(pane.symbol);
+  const [stockCandles, setStockCandles] = useState<Candle[]>([]);
+
+  useEffect(() => {
+    if (!isB3) return;
+    let active = true;
+    desktop.fetchBrStockCandles(pane.symbol)
+      .then(c => {
+        if (active && c.length > 0) setStockCandles(c);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [isB3, pane.symbol]);
+
+  // Cada painel possui seu stream de mercado dedicado e ininterrupto
+  const market = useMarket(pane.symbol, pane.interval, [], !isB3);
+
+  // Se for o painel primário inicial com mesmo par/tempo, reutiliza dados para hidratação instantânea
+  const isMatchingPrimary = isPrimary && pane.symbol === primarySymbol && pane.interval === primaryInterval;
+  const baseCandles = market.candles.length > 0
+    ? market.candles
+    : (isMatchingPrimary && primaryCandles.length > 0 ? primaryCandles : []);
+
+  const activeCandles = isB3 ? (market.candles.length ? market.candles : stockCandles) : baseCandles;
+  const calculatedIndicators = useIndicators(activeCandles, settings);
+  const activeIndicators = isMatchingPrimary && primaryIndicators
+    ? primaryIndicators
+    : calculatedIndicators.result;
+
+  const countdown = useCandleCountdown(pane.interval, activeCandles.at(-1)?.time);
+
 
   const commitSymbol = () => {
     const clean = symbolInput.trim().toUpperCase();
@@ -82,12 +107,13 @@ export const ChartPane = memo(function ChartPane({
   return (
     <div
       className={`chart-pane-cell ${isActive ? 'pane-active' : ''} ${isMaximized ? 'pane-maximized' : ''}`}
+      onPointerDownCapture={onSelect}
       onClick={onSelect}
       role="region"
       aria-label={`Painel do gráfico ${pairLabel(pane.symbol)} ${pane.interval}`}
     >
       {/* Barra de Ferramentas Superior do Painel */}
-      <div className="chart-pane-header" onClick={e => e.stopPropagation()}>
+      <div className="chart-pane-header">
         <div className="pane-header-left">
           {isActive ? (
             <span className="pane-active-badge" title="Painel ativo (conectado ao Order Book e IA)">
@@ -148,6 +174,12 @@ export const ChartPane = memo(function ChartPane({
         </div>
 
         <div className="pane-header-right">
+          {/* Contador regressivo para fechamento do candle */}
+          <div className="pane-countdown-pill" title={`Tempo restante para o fechamento do candle atual (${pane.interval})`}>
+            <Clock size={11} aria-hidden="true" />
+            <span>{countdown}</span>
+          </div>
+
           {/* Seletor de Intervalo */}
           <div className="pane-intervals" role="group" aria-label="Intervalo do gráfico">
             {intervals.map(int => (
@@ -200,6 +232,7 @@ export const ChartPane = memo(function ChartPane({
             dark={dark}
             chartType={pane.chartType}
             symbol={pane.symbol}
+            interval={pane.interval}
             showToolbar={isActive}
             onChartReady={api => onChartReady?.(pane.id, api)}
           />

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { LayoutGrid, Link2, Unlink } from 'lucide-react';
+import { LayoutGrid, Link2, Unlink, Clock } from 'lucide-react';
 import type { IChartApi, LogicalRange } from 'lightweight-charts';
 import type { Candle, Interval } from '../../lib/types';
 import type { IndicatorSettings } from '../settings/preferences';
@@ -86,6 +86,16 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
     }
   });
 
+  // Sincronização de tempos gráficos (timeframes) entre todos os gráficos
+  const [syncIntervals, setSyncIntervals] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('criptovisualizer:sync-intervals');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
+
   const syncChartsRef = useRef(syncCharts);
   syncChartsRef.current = syncCharts;
 
@@ -93,28 +103,46 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
   const isSyncingRef = useRef(false);
   const unsubscribers = useRef<Map<string, () => void>>(new Map());
 
-  const isSelectingPane = useRef(false);
+  // Registra o último símbolo/intervalo reportado por este grid para evitar loops de eco com o App.tsx
+  const lastReportedRef = useRef<{ symbol: string; interval: Interval } | null>({
+    symbol: primarySymbol,
+    interval: primaryInterval,
+  });
 
-  // Sincroniza o painel ativo com alterações externas de símbolo/intervalo (ex: busca ou favoritos)
+  // Sincroniza o painel ativo SOMENTE com alterações externas genuínas (ex: favoritos da barra lateral ou busca no topo)
   useEffect(() => {
-    if (isSelectingPane.current) {
-      isSelectingPane.current = false;
+    // Se primarySymbol e primaryInterval coincidem com o que o grid reportou, é apenas o eco de seleção. Não alteramos nada!
+    if (
+      lastReportedRef.current &&
+      lastReportedRef.current.symbol === primarySymbol &&
+      lastReportedRef.current.interval === primaryInterval
+    ) {
       return;
     }
+
+    lastReportedRef.current = { symbol: primarySymbol, interval: primaryInterval };
+
     setPanes(prev => {
-      const idx = prev.findIndex(p => p.id === activePaneId);
-      const targetIdx = idx >= 0 ? idx : 0;
-      if (prev[targetIdx] && (prev[targetIdx].symbol !== primarySymbol || prev[targetIdx].interval !== primaryInterval)) {
-        const updated = [...prev];
-        updated[targetIdx] = { ...updated[targetIdx], symbol: primarySymbol, interval: primaryInterval };
-        try {
-          localStorage.setItem('criptovisualizer:chart-panes', JSON.stringify(updated));
-        } catch {
-          // ignore
+      let changed = false;
+      const next = prev.map(p => {
+        // Altera ESTRITAMENTE o painel atualmente ativo
+        if (p.id === activePaneId) {
+          if (p.symbol !== primarySymbol || p.interval !== primaryInterval) {
+            changed = true;
+            return { ...p, symbol: primarySymbol, interval: primaryInterval };
+          }
         }
-        return updated;
+        return p;
+      });
+
+      if (!changed) return prev;
+
+      try {
+        localStorage.setItem('criptovisualizer:chart-panes', JSON.stringify(next));
+      } catch {
+        // ignore
       }
-      return prev;
+      return next;
     });
   }, [primarySymbol, primaryInterval, activePaneId]);
 
@@ -130,7 +158,14 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
 
   const handleUpdatePane = useCallback((paneId: string, updates: Partial<ChartPaneConfig>) => {
     setPanes(prev => {
-      const next = prev.map(p => (p.id === paneId ? { ...p, ...updates } : p));
+      const next = prev.map(p => {
+        if (updates.interval && syncIntervals) {
+          // Se a sincronização de tempo estiver ligada, atualiza todos os painéis com esse intervalo
+          return p.id === paneId ? { ...p, ...updates } : { ...p, interval: updates.interval! };
+        }
+        return p.id === paneId ? { ...p, ...updates } : p;
+      });
+
       try {
         localStorage.setItem('criptovisualizer:chart-panes', JSON.stringify(next));
       } catch {
@@ -144,15 +179,18 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
       if (updates.symbol || updates.interval) {
         const target = panes.find(p => p.id === paneId);
         if (target) {
-          onActiveSymbolChange(updates.symbol || target.symbol, updates.interval || target.interval);
+          const newSymbol = updates.symbol || target.symbol;
+          const newInterval = updates.interval || target.interval;
+          lastReportedRef.current = { symbol: newSymbol, interval: newInterval };
+          onActiveSymbolChange(newSymbol, newInterval);
         }
       }
     }
-  }, [activePaneId, panes, onActiveSymbolChange]);
+  }, [activePaneId, panes, syncIntervals, onActiveSymbolChange]);
 
   const handleSelectPane = useCallback((pane: ChartPaneConfig) => {
-    isSelectingPane.current = true;
     setActivePaneId(pane.id);
+    lastReportedRef.current = { symbol: pane.symbol, interval: pane.interval };
     onActiveSymbolChange(pane.symbol, pane.interval);
   }, [onActiveSymbolChange]);
 
@@ -242,6 +280,32 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
     });
   };
 
+  const handleToggleSyncIntervals = () => {
+    setSyncIntervals(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('criptovisualizer:sync-intervals', String(next));
+      } catch {
+        // ignore
+      }
+      if (next) {
+        const activePane = panes.find(p => p.id === activePaneId) || panes[0];
+        if (activePane) {
+          setPanes(current => {
+            const updated = current.map(p => ({ ...p, interval: activePane.interval }));
+            try {
+              localStorage.setItem('criptovisualizer:chart-panes', JSON.stringify(updated));
+            } catch {
+              // ignore
+            }
+            return updated;
+          });
+        }
+      }
+      return next;
+    });
+  };
+
   const capacity = LAYOUT_CAPACITIES[layout];
   const visiblePanes = useMemo(() => {
     if (maximizedPaneId) {
@@ -287,6 +351,21 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
           <span>{syncCharts ? 'Zoom Sincronizado' : 'Zoom Independente'}</span>
         </button>
 
+        {/* Botão de Sincronização de Tempo Gráfico (15m, 1h...) */}
+        <button
+          type="button"
+          className={`multichart-sync-btn ${syncIntervals ? 'active' : ''}`}
+          onClick={handleToggleSyncIntervals}
+          title={
+            syncIntervals
+              ? 'Sincronização de tempo gráfico ativada: ao mudar o tempo de um gráfico, todos mudam'
+              : 'Clique para sincronizar o tempo gráfico (15m, 1h...) em todos os gráficos'
+          }
+        >
+          <Clock size={13} />
+          <span>{syncIntervals ? 'Tempo Sincronizado' : 'Tempo Independente'}</span>
+        </button>
+
         {maximizedPaneId && (
           <button
             type="button"
@@ -316,6 +395,8 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
               dark={dark}
               availableSymbols={availableSymbols}
               isPrimary={isPrimary}
+              primarySymbol={primarySymbol}
+              primaryInterval={primaryInterval}
               primaryCandles={primaryCandles}
               primaryIndicators={primaryIndicators}
               onChartReady={handleChartReady}

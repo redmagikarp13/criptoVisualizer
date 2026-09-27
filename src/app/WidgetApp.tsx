@@ -210,6 +210,8 @@ export function WidgetApp() {
             indicators={indicators.result}
             settings={widgetIndicators}
             dark={dark}
+            symbol={preferences.symbol}
+            interval={preferences.interval}
           />
         ) : (
           <div className="widget-chart-loading">
