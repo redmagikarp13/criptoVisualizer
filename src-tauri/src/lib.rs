@@ -128,6 +128,14 @@ fn update_tray(title: String, app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+async fn fetch_derivatives_data(
+    symbol: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value> {
+    market::binance::fetch_futures_data(&state.client, &symbol).await
+}
+
+#[tauri::command]
 fn show_main_window(app: tauri::AppHandle) {
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.unminimize();
@@ -142,6 +150,7 @@ fn show_main_window(app: tauri::AppHandle) {
         .title("CriptoVisualizer")
         .inner_size(1440.0, 900.0)
         .min_inner_size(1024.0, 700.0)
+        .background_color(tauri::window::Color(11, 15, 25, 255))
         .build();
     }
     if let Some(widget) = app.get_webview_window("widget") {
@@ -314,7 +323,8 @@ pub fn run() {
             load_preferences, save_preferences, list_instruments, start_market,
             stop_market, detect_cli, analyze_market, cancel_analysis,
             notify, update_tray, show_main_window, exit_app,
-            search_br_stocks, fetch_br_quotes, fetch_br_stock_candles
+            search_br_stocks, fetch_br_quotes, fetch_br_stock_candles,
+            fetch_derivatives_data
         ])
         .build(tauri::generate_context!())
         .expect("Não foi possível iniciar o CriptoVisualizer")

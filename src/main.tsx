@@ -91,6 +91,14 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
+window.addEventListener('error', (event) => {
+  console.warn('Unhandled window error caught:', event.error || event.message);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.warn('Unhandled promise rejection caught:', event.reason);
+});
+
 const params = new URLSearchParams(window.location.search);
 const isWidget = params.get('view') === 'widget';
 if (isWidget) {

@@ -171,6 +171,49 @@ describe('findTrendlinesConvergence', () => {
     const convergences = findTrendlinesConvergence([line1, line2], nowSec);
     expect(convergences).toHaveLength(0);
   });
+  it('ignores lines that converge more than 60 days into the future', () => {
+    const nowSec = 1790500000;
+    // Lines that intersect 100 days from now
+    const line1: TrendlineDrawing = {
+      id: 'far1',
+      type: 'trendline',
+      color: '#38bdf8',
+      p1: { time: nowSec - 3600, price: 100 },
+      p2: { time: nowSec, price: 100.0001 },
+    };
+    const line2: TrendlineDrawing = {
+      id: 'far2',
+      type: 'trendline',
+      color: '#38bdf8',
+      p1: { time: nowSec - 3600, price: 50 },
+      p2: { time: nowSec, price: 50.0002 },
+    };
+
+    const convergences = findTrendlinesConvergence([line1, line2], nowSec);
+    expect(convergences).toHaveLength(0);
+  });
+
+  it('ignores intersections with non-positive or non-finite prices', () => {
+    const nowSec = 1790500000;
+    // Lines that converge below zero
+    const line1: TrendlineDrawing = {
+      id: 'neg1',
+      type: 'trendline',
+      color: '#38bdf8',
+      p1: { time: nowSec - 3600, price: 10 },
+      p2: { time: nowSec, price: 5 },
+    };
+    const line2: TrendlineDrawing = {
+      id: 'neg2',
+      type: 'trendline',
+      color: '#38bdf8',
+      p1: { time: nowSec - 3600, price: 20 },
+      p2: { time: nowSec, price: 10 },
+    };
+
+    const convergences = findTrendlinesConvergence([line1, line2], nowSec);
+    expect(convergences).toHaveLength(0);
+  });
 });
 
 describe('formatApexPrice', () => {
@@ -178,5 +221,11 @@ describe('formatApexPrice', () => {
     expect(formatApexPrice(65432.1)).toBe('65.432,10');
     expect(formatApexPrice(0.2742)).toBe('0,2742');
     expect(formatApexPrice(0.00012345)).toBe('0,00012345');
+  });
+
+  it('handles invalid numbers safely', () => {
+    expect(formatApexPrice(NaN)).toBe('—');
+    expect(formatApexPrice(Infinity)).toBe('—');
+    expect(formatApexPrice(-50)).toBe('—');
   });
 });

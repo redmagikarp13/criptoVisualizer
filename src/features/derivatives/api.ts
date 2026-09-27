@@ -4,6 +4,7 @@ import type {
   SentimentBias,
   SqueezeRisk,
 } from './types';
+import { desktop } from '../../lib/desktop';
 
 const FAPI_BASE = 'https://fapi.binance.com';
 
@@ -46,40 +47,65 @@ export async function fetchDerivativesData(
   }
 
   try {
-    const [premiumRes, oiRes, oiHistRes, lsRes, topLsRes] = await Promise.all([
-      fetch(`${FAPI_BASE}/fapi/v1/premiumIndex?symbol=${cleanSymbol}`, { signal }),
-      fetch(`${FAPI_BASE}/fapi/v1/openInterest?symbol=${cleanSymbol}`, { signal }),
-      fetch(`${FAPI_BASE}/futures/data/openInterestHist?symbol=${cleanSymbol}&period=15m&limit=8`, { signal }),
-      fetch(`${FAPI_BASE}/futures/data/globalLongShortAccountRatio?symbol=${cleanSymbol}&period=15m&limit=2`, { signal }),
-      fetch(`${FAPI_BASE}/futures/data/topLongShortPositionRatio?symbol=${cleanSymbol}&period=15m&limit=2`, { signal }),
-    ]);
+    let premiumData: Record<string, unknown> | null = null;
+    let oiData: Record<string, unknown> | null = null;
+    let oiHistData: unknown[] = [];
+    let lsData: unknown[] = [];
+    let topLsData: unknown[] = [];
 
-    if (!premiumRes.ok || !oiRes.ok) {
-      return null;
+    // Tentar via backend nativo Tauri primeiro (imune a bloqueios de CSP / limites do navegador)
+    if (desktop.available) {
+      const desktopResult = await desktop.fetchDerivativesData(cleanSymbol);
+      if (desktopResult && typeof desktopResult === 'object') {
+        premiumData = desktopResult.premium as Record<string, unknown> | null;
+        oiData = desktopResult.oi as Record<string, unknown> | null;
+        oiHistData = Array.isArray(desktopResult.oi_hist) ? desktopResult.oi_hist : [];
+        lsData = Array.isArray(desktopResult.ls) ? desktopResult.ls : [];
+        topLsData = Array.isArray(desktopResult.top_ls) ? desktopResult.top_ls : [];
+      }
     }
 
-    const premiumData = await premiumRes.json();
-    if (premiumData.code && premiumData.code < 0) {
-      return null;
+    // Se o backend nativo não retornou dados, tenta via fetch HTTP direto
+    if (!premiumData || !oiData) {
+      const [premiumRes, oiRes, oiHistRes, lsRes, topLsRes] = await Promise.all([
+        fetch(`${FAPI_BASE}/fapi/v1/premiumIndex?symbol=${cleanSymbol}`, { signal }),
+        fetch(`${FAPI_BASE}/fapi/v1/openInterest?symbol=${cleanSymbol}`, { signal }),
+        fetch(`${FAPI_BASE}/futures/data/openInterestHist?symbol=${cleanSymbol}&period=15m&limit=8`, { signal }),
+        fetch(`${FAPI_BASE}/futures/data/globalLongShortAccountRatio?symbol=${cleanSymbol}&period=15m&limit=2`, { signal }),
+        fetch(`${FAPI_BASE}/futures/data/topLongShortPositionRatio?symbol=${cleanSymbol}&period=15m&limit=2`, { signal }),
+      ]);
+
+      if (!premiumRes.ok || !oiRes.ok) {
+        return null;
+      }
+
+      premiumData = await premiumRes.json();
+      if (premiumData && (premiumData as { code?: number }).code && (premiumData as { code?: number }).code! < 0) {
+        return null;
+      }
+
+      oiData = await oiRes.json();
+      oiHistData = oiHistRes.ok ? await oiHistRes.json() : [];
+      lsData = lsRes.ok ? await lsRes.json() : [];
+      topLsData = topLsRes.ok ? await topLsRes.json() : [];
     }
 
-    const oiData = await oiRes.json();
-    const oiHistData = oiHistRes.ok ? await oiHistRes.json() : [];
-    const lsData = lsRes.ok ? await lsRes.json() : [];
-    const topLsData = topLsRes.ok ? await topLsRes.json() : [];
+    if (!premiumData || !oiData) return null;
 
-    const markPrice = Number.parseFloat(premiumData.markPrice) || 0;
-    const indexPrice = Number.parseFloat(premiumData.indexPrice) || markPrice;
-    const fundingRate = Number.parseFloat(premiumData.lastFundingRate) || 0;
-    const nextFundingTime = Number.parseInt(premiumData.nextFundingTime, 10) || Date.now() + 8 * 3600 * 1000;
-    const openInterestAmount = Number.parseFloat(oiData.openInterest) || 0;
+    const markPrice = Number(premiumData.markPrice) || 0;
+    const indexPrice = Number(premiumData.indexPrice) || markPrice;
+    const fundingRate = Number(premiumData.lastFundingRate) || 0;
+    const nextFundingTime = Number(premiumData.nextFundingTime) || Date.now() + 8 * 3600 * 1000;
+    const openInterestAmount = Number(oiData.openInterest) || 0;
     const openInterestValueUsd = openInterestAmount * markPrice;
 
     // Variação do Open Interest na última hora (4 períodos de 15m)
     let openInterestChange1hPct: number | null = null;
     if (Array.isArray(oiHistData) && oiHistData.length >= 2) {
-      const latest = Number.parseFloat(oiHistData[oiHistData.length - 1]?.sumOpenInterest);
-      const prev = Number.parseFloat(oiHistData[Math.max(0, oiHistData.length - 5)]?.sumOpenInterest);
+      const latestObj = oiHistData[oiHistData.length - 1] as Record<string, unknown>;
+      const prevObj = oiHistData[Math.max(0, oiHistData.length - 5)] as Record<string, unknown>;
+      const latest = Number(latestObj?.sumOpenInterest) || 0;
+      const prev = Number(prevObj?.sumOpenInterest) || 0;
       if (latest > 0 && prev > 0) {
         openInterestChange1hPct = Number.parseFloat((((latest - prev) / prev) * 100).toFixed(2));
       }
@@ -90,10 +116,13 @@ export async function fetchDerivativesData(
     let shortAccountRatio = 50;
     let longShortRatio = 1.0;
     if (Array.isArray(lsData) && lsData.length > 0) {
-      const latestLs = lsData[lsData.length - 1];
-      longAccountRatio = Number.parseFloat((Number.parseFloat(latestLs.longAccount) * 100).toFixed(1));
-      shortAccountRatio = Number.parseFloat((Number.parseFloat(latestLs.shortAccount) * 100).toFixed(1));
-      longShortRatio = Number.parseFloat(Number.parseFloat(latestLs.longShortRatio).toFixed(2));
+      const latestLs = lsData[lsData.length - 1] as Record<string, unknown>;
+      const longAcc = Number(latestLs?.longAccount) || 0.5;
+      const shortAcc = Number(latestLs?.shortAccount) || 0.5;
+      const lsRatio = Number(latestLs?.longShortRatio) || 1.0;
+      longAccountRatio = Number.parseFloat((longAcc * 100).toFixed(1));
+      shortAccountRatio = Number.parseFloat((shortAcc * 100).toFixed(1));
+      longShortRatio = Number.parseFloat(lsRatio.toFixed(2));
     }
 
     // Ratio Long vs Short dos Top Traders (Baleias)
@@ -101,10 +130,13 @@ export async function fetchDerivativesData(
     let topTradersShortRatio: number | null = null;
     let topTradersRatio: number | null = null;
     if (Array.isArray(topLsData) && topLsData.length > 0) {
-      const latestTop = topLsData[topLsData.length - 1];
-      topTradersLongRatio = Number.parseFloat((Number.parseFloat(latestTop.longAccount) * 100).toFixed(1));
-      topTradersShortRatio = Number.parseFloat((Number.parseFloat(latestTop.shortAccount) * 100).toFixed(1));
-      topTradersRatio = Number.parseFloat(Number.parseFloat(latestTop.longShortRatio).toFixed(2));
+      const latestTop = topLsData[topLsData.length - 1] as Record<string, unknown>;
+      const topLong = Number(latestTop?.longAccount);
+      const topShort = Number(latestTop?.shortAccount);
+      const topRatio = Number(latestTop?.longShortRatio);
+      if (Number.isFinite(topLong)) topTradersLongRatio = Number.parseFloat((topLong * 100).toFixed(1));
+      if (Number.isFinite(topShort)) topTradersShortRatio = Number.parseFloat((topShort * 100).toFixed(1));
+      if (Number.isFinite(topRatio)) topTradersRatio = Number.parseFloat(topRatio.toFixed(2));
     }
 
     // Classificação de Sentimento

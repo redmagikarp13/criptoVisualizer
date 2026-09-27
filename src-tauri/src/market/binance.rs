@@ -172,3 +172,53 @@ pub async fn run(client: reqwest::Client, request: MarketRequest, sink: Sink, ca
         tokio::select! { _ = cancel.cancelled() => return, _ = tokio::time::sleep(Duration::from_secs_f64(delay)) => {} }
     }
 }
+
+pub async fn fetch_futures_data(client: &reqwest::Client, symbol: &str) -> Result<serde_json::Value> {
+    let clean = symbol.trim().to_uppercase();
+    if !clean.ends_with("USDT") && !clean.ends_with("USDC") {
+        return Ok(serde_json::Value::Null);
+    }
+    let fapi_base = "https://fapi.binance.com";
+    let premium_url = format!("{}/fapi/v1/premiumIndex?symbol={}", fapi_base, clean);
+    let oi_url = format!("{}/fapi/v1/openInterest?symbol={}", fapi_base, clean);
+    let oi_hist_url = format!("{}/futures/data/openInterestHist?symbol={}&period=15m&limit=8", fapi_base, clean);
+    let ls_url = format!("{}/futures/data/globalLongShortAccountRatio?symbol={}&period=15m&limit=2", fapi_base, clean);
+    let top_ls_url = format!("{}/futures/data/topLongShortPositionRatio?symbol={}&period=15m&limit=2", fapi_base, clean);
+
+    let (premium_res, oi_res, oi_hist_res, ls_res, top_ls_res) = tokio::join!(
+        client.get(&premium_url).send(),
+        client.get(&oi_url).send(),
+        client.get(&oi_hist_url).send(),
+        client.get(&ls_url).send(),
+        client.get(&top_ls_url).send(),
+    );
+
+    let premium: serde_json::Value = match premium_res {
+        Ok(res) if res.status().is_success() => res.json().await.unwrap_or_default(),
+        _ => return Ok(serde_json::Value::Null),
+    };
+    let oi: serde_json::Value = match oi_res {
+        Ok(res) if res.status().is_success() => res.json().await.unwrap_or_default(),
+        _ => return Ok(serde_json::Value::Null),
+    };
+    let oi_hist: serde_json::Value = match oi_hist_res {
+        Ok(res) if res.status().is_success() => res.json().await.unwrap_or_default(),
+        _ => serde_json::Value::Array(vec![]),
+    };
+    let ls: serde_json::Value = match ls_res {
+        Ok(res) if res.status().is_success() => res.json().await.unwrap_or_default(),
+        _ => serde_json::Value::Array(vec![]),
+    };
+    let top_ls: serde_json::Value = match top_ls_res {
+        Ok(res) if res.status().is_success() => res.json().await.unwrap_or_default(),
+        _ => serde_json::Value::Array(vec![]),
+    };
+
+    Ok(serde_json::json!({
+        "premium": premium,
+        "oi": oi,
+        "oi_hist": oi_hist,
+        "ls": ls,
+        "top_ls": top_ls,
+    }))
+}

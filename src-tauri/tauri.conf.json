@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "CriptoVisualizer",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "identifier": "app.criptovisualizer.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -11,11 +11,37 @@
   },
   "app": {
     "windows": [
-      { "label": "main", "title": "CriptoVisualizer", "url": "index.html", "width": 1440, "height": 900, "minWidth": 1024, "minHeight": 700, "devtools": true },
-      { "label": "widget", "title": "CriptoVisualizer Widget", "url": "index.html?view=widget", "width": 380, "height": 520, "resizable": false, "decorations": false, "alwaysOnTop": true, "visible": false, "skipTaskbar": true, "transparent": true, "devtools": true }
+      {
+        "label": "main",
+        "title": "CriptoVisualizer",
+        "url": "index.html",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "backgroundColor": [11, 15, 25, 255],
+        "backgroundThrottling": "disabled",
+        "devtools": true
+      },
+      {
+        "label": "widget",
+        "title": "CriptoVisualizer Widget",
+        "url": "index.html?view=widget",
+        "width": 380,
+        "height": 520,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "transparent": true,
+        "backgroundColor": [11, 15, 25, 255],
+        "backgroundThrottling": "disabled",
+        "devtools": true
+      }
     ],
     "security": {
-      "csp": "default-src 'self' tauri:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost tauri: https://brapi.dev; object-src 'none'; base-uri 'self'; frame-src 'none'"
+      "csp": "default-src 'self' tauri:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost tauri: https://brapi.dev https://fapi.binance.com https://api.binance.com https://*.binance.com wss://*.binance.com:9443; object-src 'none'; base-uri 'self'; frame-src 'none'"
     }
   },
   "bundle": {

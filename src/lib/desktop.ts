@@ -188,4 +188,14 @@ export const desktop = {
       return [];
     }
   },
+  async fetchDerivativesData(symbol: string): Promise<Record<string, unknown> | null> {
+    if (available) {
+      try {
+        return await invoke<Record<string, unknown> | null>('fetch_derivatives_data', { symbol });
+      } catch (err) {
+        console.warn('fetch_derivatives_data desktop error:', err);
+      }
+    }
+    return null;
+  },
 };

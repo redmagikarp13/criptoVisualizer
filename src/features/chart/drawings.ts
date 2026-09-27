@@ -60,17 +60,21 @@ export interface TrendConvergence {
 }
 
 export function formatApexPrice(price: number): string {
-  if (!Number.isFinite(price)) return '—';
-  if (price >= 1000) {
-    return price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!Number.isFinite(price) || price <= 0) return '—';
+  try {
+    if (price >= 1000) {
+      return price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    if (price >= 1) {
+      return price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    }
+    if (price >= 0.01) {
+      return price.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+    }
+    return price.toLocaleString('pt-BR', { minimumFractionDigits: 6, maximumFractionDigits: 8 });
+  } catch {
+    return String(price);
   }
-  if (price >= 1) {
-    return price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-  }
-  if (price >= 0.01) {
-    return price.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
-  }
-  return price.toLocaleString('pt-BR', { minimumFractionDigits: 6, maximumFractionDigits: 8 });
 }
 
 export function calculateLineEquation(p1: Point, p2: Point) {
@@ -108,13 +112,19 @@ export function findTrendlinesConvergence(
       const apexPrice = eq1.slope * apexTime + eq1.intercept;
 
       // Must be finite and positive price
-      if (apexPrice <= 0 || !Number.isFinite(apexPrice) || !Number.isFinite(apexTime)) continue;
+      if (apexPrice <= 0 || apexPrice > 1e10 || !Number.isFinite(apexPrice) || !Number.isFinite(apexTime)) continue;
 
       // Check that intersection is in the future relative to the anchor points
       const latestAnchor = Math.max(eq1.end.time, eq2.end.time);
 
       // If apex is before the drawn segment end or before now - 120s, it's already in the past
       if (apexTime <= latestAnchor || apexTime < nowSec - 120) continue;
+
+      // Limitar a convergências realistas (máximo 60 dias no futuro para evitar números astronômicos)
+      if (apexTime > nowSec + 60 * 86400) continue;
+
+      const apexDate = new Date(apexTime * 1000);
+      if (isNaN(apexDate.getTime())) continue;
 
       const remainingSeconds = Math.max(0, Math.round(apexTime - nowSec));
 
@@ -135,8 +145,6 @@ export function findTrendlinesConvergence(
         remainingFormatted = 'no ápice / agora';
       }
 
-      // Date formatting
-      const apexDate = new Date(apexTime * 1000);
       const nowDate = new Date(nowSec * 1000);
 
       const isToday =

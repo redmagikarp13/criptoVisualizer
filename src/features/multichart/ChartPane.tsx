@@ -14,6 +14,52 @@ import type { IndicatorResult } from '../indicators/calculations';
 import type { ChartPaneConfig } from './types';
 import { DerivativesBadge } from '../derivatives/DerivativesBadge';
 
+interface ChartErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ChartErrorBoundary extends React.Component<
+  { children: React.ReactNode; symbol: string; onReset?: () => void },
+  ChartErrorBoundaryState
+> {
+  constructor(props: { children: React.ReactNode; symbol: string; onReset?: () => void }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ChartErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.warn(`Chart error in ${this.props.symbol}:`, error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="pane-empty-state" style={{ padding: '24px', textAlign: 'center' }}>
+          <p style={{ color: '#f87171', fontSize: '0.875rem', marginBottom: '12px' }}>
+            Não foi possível renderizar o gráfico de {this.props.symbol}
+          </p>
+          <button
+            type="button"
+            className="pane-activate-btn"
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              this.props.onReset?.();
+            }}
+          >
+            Recarregar Gráfico
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 interface ChartPaneProps {
   pane: ChartPaneConfig;
   isActive: boolean;
@@ -235,18 +281,20 @@ export const ChartPane = memo(function ChartPane({
       {/* Área do Gráfico */}
       <div className="chart-pane-body">
         {activeCandles.length > 0 ? (
-          <MarketChart
-            key={`${pane.id}-${pane.symbol}-${pane.interval}-${pane.chartType}`}
-            candles={activeCandles}
-            indicators={activeIndicators}
-            settings={settings}
-            dark={dark}
-            chartType={pane.chartType}
-            symbol={pane.symbol}
-            interval={pane.interval}
-            showToolbar={isActive}
-            onChartReady={api => onChartReady?.(pane.id, api)}
-          />
+          <ChartErrorBoundary symbol={pane.symbol}>
+            <MarketChart
+              key={`${pane.id}-${pane.symbol}-${pane.interval}-${pane.chartType}`}
+              candles={activeCandles}
+              indicators={activeIndicators}
+              settings={settings}
+              dark={dark}
+              chartType={pane.chartType}
+              symbol={pane.symbol}
+              interval={pane.interval}
+              showToolbar={isActive}
+              onChartReady={api => onChartReady?.(pane.id, api)}
+            />
+          </ChartErrorBoundary>
         ) : (
           <div className="pane-empty-state">
             <Activity size={24} className="pane-loading-icon" />
