@@ -68,6 +68,7 @@ export interface BotAnalysis {
   summaryText: string;
   intent: BotIntentAnalysis;
   rolling?: RollingAverages;
+  instantBidPressurePct?: number;
 }
 
 export interface BufferFrame {
@@ -685,13 +686,75 @@ export function useBotDetector(depth: OrderBook | null, currentPrice: number = 0
     const topBidWall = wallsWithPersistence.find(w => w.side === 'bid') ?? null;
     const topAskWall = wallsWithPersistence.find(w => w.side === 'ask') ?? null;
 
+    // 4. Suavização Estatística da Tendência e Amortecimento de Ruído (EWMA)
+    // Se a amostragem tiver menos de 8s (aquecimento inicial de novo par), não gera sinais precipitados
+    let smoothedIntent = analysis.intent;
+
+    if (rolling.sampleDurationSec < 8 && samplesRef.current.length < 4) {
+      smoothedIntent = {
+        ...analysis.intent,
+        score: Math.round(analysis.intent.score * (rolling.sampleDurationSec / 8)),
+        headline: `CALIBRANDO AMOSTRAGEM... (${rolling.sampleDurationSec}s) ⏳`,
+        explanation: `Acumulando histórico do livro para amortecer o ruído de alta frequência (HFT) e evitar falsos sinais de poucos segundos.`,
+        actionableAdvice: `Aguarde alguns segundos para consolidação das médias históricas e confirmação de tendência real.`,
+      };
+    } else {
+      const referenceAvg = rolling.avgPressure1m ?? rolling.avgPressure5m ?? analysis.intent.bidPressurePct;
+      // Pondera 65% na média móvel recente (1m/5m) e 35% no fluxo instantâneo
+      const smoothedBidPressure = Math.round(0.65 * referenceAvg + 0.35 * analysis.intent.bidPressurePct);
+      const smoothedAskPressure = 100 - smoothedBidPressure;
+      const smoothedScore = Math.max(-100, Math.min(100, Math.round((smoothedBidPressure - 50) * 2)));
+
+      let direction = analysis.intent.direction;
+      let intensity = analysis.intent.intensity;
+      let headline = analysis.intent.headline;
+      let explanation = analysis.intent.explanation;
+      let actionableAdvice = analysis.intent.actionableAdvice;
+
+      if (rolling.consistency === 'divergent') {
+        headline = 'DIVERGÊNCIA: PICO MOMENTÂNEO VS MÉDIA ⚠️';
+        explanation = `A pressão instantânea (${analysis.intent.bidPressurePct}% C) diverge da tendência nas médias históricas (${referenceAvg}% C). Evite entradas precipitadas em impulsos de poucos segundos.`;
+        actionableAdvice = 'Paredes que duram poucos segundos podem ser teste de liquidez ou spoofing. Aguarde alinhamento das médias móveis.';
+      } else if (smoothedScore >= 24) {
+        direction = 'pushing_up';
+        intensity = smoothedScore >= 50 ? 'strong' : 'moderate';
+        if (rolling.consistency === 'bullish_confirmed') {
+          headline = intensity === 'strong' ? 'ALTA CONFIRMADA NAS MÉDIAS HISTÓRICAS 🚀' : 'ROBÔS SUSTENTANDO ALTA (HISTÓRICO) ↗️';
+        }
+      } else if (smoothedScore <= -24) {
+        direction = 'pushing_down';
+        intensity = smoothedScore <= -50 ? 'strong' : 'moderate';
+        if (rolling.consistency === 'bearish_confirmed') {
+          headline = intensity === 'strong' ? 'BAIXA CONFIRMADA NAS MÉDIAS HISTÓRICAS 🔻' : 'ROBÔS SUSTENTANDO BAIXA (HISTÓRICO) ↘️';
+        }
+      } else {
+        direction = 'neutral';
+        intensity = 'weak';
+        headline = 'DISPUTA EQUILIBRADA NAS MÉDIAS ⚖️';
+      }
+
+      smoothedIntent = {
+        ...analysis.intent,
+        score: smoothedScore,
+        bidPressurePct: smoothedBidPressure,
+        askPressurePct: smoothedAskPressure,
+        direction,
+        intensity,
+        headline,
+        explanation,
+        actionableAdvice,
+      };
+    }
+
     return {
       ...analysis,
       activeWalls: wallsWithPersistence,
       topBidWall,
       topAskWall,
       spoofAlerts: [...spoofAlertsRef.current],
+      intent: smoothedIntent,
       rolling,
+      instantBidPressurePct: analysis.intent.bidPressurePct,
     };
   }, [depth, currentPrice]);
 

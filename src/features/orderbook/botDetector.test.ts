@@ -250,5 +250,28 @@ describe('botDetector', () => {
     expect(emptyMetrics.avgPressure1m).toBeNull();
     expect(emptyMetrics.consistency).toBe('neutral');
   });
+
+  it('useBotDetector inicia em estado de calibração evitando falsos alarmes com poucos segundos', async () => {
+    const { renderHook } = await import('@testing-library/react');
+    const { useBotDetector } = await import('./botDetector');
+
+    const book: OrderBook = {
+      symbol: 'ENAUSDC',
+      time: 1000,
+      bids: [
+        { price: 0.250, amount: 1000 },
+        { price: 0.248, amount: 8000 }, // Parede pesada instantânea
+      ],
+      asks: [
+        { price: 0.251, amount: 1000 },
+      ],
+    };
+
+    const { result } = renderHook(() => useBotDetector(book, 0.2505));
+
+    // Nos primeiros segundos (< 8s), deve amortecer o score e indicar calibração
+    expect(result.current.intent.headline).toContain('CALIBRANDO AMOSTRAGEM');
+    expect(result.current.instantBidPressurePct).toBeGreaterThan(60);
+  });
 });
 

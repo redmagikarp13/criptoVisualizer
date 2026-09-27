@@ -287,8 +287,8 @@ export function OrderBookView({
               {botAnalysis.rolling && (
                 <div className="rolling-pressure-section">
                   <div className="rolling-pills-row">
-                    <span className="rolling-pill pill-instant" title="Pressão instantânea atual do livro">
-                      Inst: <strong>{botAnalysis.intent.bidPressurePct}% C</strong>
+                    <span className="rolling-pill pill-instant" title="Pressão instantânea atual do livro (último milissegundo)">
+                      Inst: <strong>{botAnalysis.instantBidPressurePct ?? botAnalysis.intent.bidPressurePct}% C</strong>
                     </span>
                     {botAnalysis.rolling.avgPressure1m !== null && (
                       <span className="rolling-pill" title="Média móvel de pressão nos últimos 60 segundos">

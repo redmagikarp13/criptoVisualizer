@@ -27,8 +27,8 @@ export function findPivots(
     return { highs, lows };
   }
 
-  // Look across recent candles (last 120 bars max)
-  const startIndex = Math.max(0, candles.length - 120);
+  // Look across recent candles (last 180 bars max)
+  const startIndex = Math.max(0, candles.length - 180);
 
   for (let i = startIndex + leftBars; i < candles.length - rightBars; i++) {
     const current = candles[i];
@@ -57,7 +57,15 @@ export function detectAutoTrendlines(candles: Candle[]): AutoTrendlinesResult {
     return { resistance: null, support: null, highPivots: [], lowPivots: [] };
   }
 
-  const { highs, lows } = findPivots(candles, 3, 2);
+  // Com base histórica suficiente (>= 50 barras), usa amostragem estrutural mais ampla
+  // (5 barras à esquerda, 3 à direita e distância mínima de 6 barras entre pivôs)
+  // para evitar ruído e falsas quebras em velas de poucos segundos/minutos.
+  const isBroad = candles.length >= 50;
+  const leftBars = isBroad ? 5 : 3;
+  const rightBars = isBroad ? 3 : 2;
+  const minBarDistance = isBroad ? 6 : 4;
+
+  const { highs, lows } = findPivots(candles, leftBars, rightBars);
 
   let bestResistance: TrendlineDrawing | null = null;
   let bestResScore = -Infinity;
@@ -72,7 +80,7 @@ export function detectAutoTrendlines(candles: Candle[]): AutoTrendlinesResult {
         const h2 = recentHighs[j];
 
         const barDistance = h2.index - h1.index;
-        if (barDistance < 4) continue;
+        if (barDistance < minBarDistance) continue;
 
         const dt = h2.time - h1.time;
         if (dt <= 0) continue;
@@ -134,7 +142,7 @@ export function detectAutoTrendlines(candles: Candle[]): AutoTrendlinesResult {
         const l2 = recentLows[j];
 
         const barDistance = l2.index - l1.index;
-        if (barDistance < 4) continue;
+        if (barDistance < minBarDistance) continue;
 
         const dt = l2.time - l1.time;
         if (dt <= 0) continue;
