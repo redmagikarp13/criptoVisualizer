@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import type { IChartApi, ISeriesApi, SeriesType, UTCTimestamp } from 'lightweight-charts';
-import type { Drawing, DrawingTool, Point } from './drawings';
+import type { IChartApi, ISeriesApi, Logical, SeriesType, UTCTimestamp } from 'lightweight-charts';
+import type { Candle } from '../../lib/types';
+import {
+  formatApexPrice,
+  type Drawing,
+  type DrawingTool,
+  type Point,
+  type TrendConvergence,
+} from './drawings';
 
 interface DrawingLayerProps {
   chart: IChartApi | null;
@@ -11,6 +18,9 @@ interface DrawingLayerProps {
   onAddDrawing: (drawing: Drawing) => void;
   onSelectCursor: () => void;
   dark: boolean;
+  candles?: Candle[];
+  projectLines?: boolean;
+  convergences?: TrendConvergence[];
 }
 
 export const DrawingLayer: React.FC<DrawingLayerProps> = ({
@@ -22,10 +32,37 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
   onAddDrawing,
   onSelectCursor,
   dark,
+  candles,
+  projectLines = true,
+  convergences = [],
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [draftStart, setDraftStart] = useState<Point | null>(null);
   const [draftCurrent, setDraftCurrent] = useState<Point | null>(null);
+
+  const getCoordinates = useCallback(
+    (point: Point): { x: number | null; y: number | null } => {
+      if (!chart || !mainSeries || typeof mainSeries.priceToCoordinate !== 'function') return { x: null, y: null };
+      const timeScale = chart.timeScale();
+      const y = mainSeries.priceToCoordinate(point.price);
+      let x = timeScale.timeToCoordinate(point.time as UTCTimestamp);
+
+      // Se timeToCoordinate retornar null (ex: timestamp futuro além do último candle),
+      // projeta a coordenada X através do espaçamento lógico das barras.
+      if (x === null && candles && candles.length >= 2) {
+        const lastIndex = candles.length - 1;
+        const lastCandle = candles[lastIndex];
+        const prevCandle = candles[lastIndex - 1];
+        const intervalSec = Math.max(1, lastCandle.time - prevCandle.time);
+        const logicalOffset = (point.time - lastCandle.time) / intervalSec;
+        const futureLogical = (lastIndex + logicalOffset) as unknown as Logical;
+        x = timeScale.logicalToCoordinate(futureLogical);
+      }
+
+      return { x, y };
+    },
+    [chart, mainSeries, candles]
+  );
 
   const render = useCallback(() => {
     const canvas = canvasRef.current;
@@ -48,8 +85,6 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     ctx.resetTransform();
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, rect.width, rect.height);
-
-    const timeScale = chart.timeScale();
 
     // Helper: Desenha Linha Horizontal
     const drawHorizontal = (price: number, color: string, isDraft = false) => {
@@ -88,7 +123,8 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
 
     // Helper: Desenha Linha Vertical
     const drawVertical = (time: number, color: string) => {
-      const x = timeScale.timeToCoordinate(time as UTCTimestamp);
+      const coord = getCoordinates({ time, price: 0 });
+      const x = coord.x;
       if (x === null || !Number.isFinite(x)) return;
 
       ctx.save();
@@ -102,16 +138,21 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       ctx.restore();
     };
 
-    // Helper: Desenha Linha de Tendência
+    // Helper: Desenha Linha de Tendência e Projeção Futura
     const drawTrendline = (p1: Point, p2: Point, color: string, isDraft = false) => {
-      const x1 = timeScale.timeToCoordinate(p1.time as UTCTimestamp);
-      const y1 = mainSeries.priceToCoordinate(p1.price);
-      const x2 = timeScale.timeToCoordinate(p2.time as UTCTimestamp);
-      const y2 = mainSeries.priceToCoordinate(p2.price);
+      const [start, end] = p1.time <= p2.time ? [p1, p2] : [p2, p1];
+      const c1 = getCoordinates(start);
+      const c2 = getCoordinates(end);
 
-      if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+      if (c1.x === null || c1.y === null || c2.x === null || c2.y === null) return;
+      const x1 = c1.x;
+      const y1 = c1.y;
+      const x2 = c2.x;
+      const y2 = c2.y;
 
       ctx.save();
+
+      // 1. Segmento base fixado
       ctx.beginPath();
       ctx.strokeStyle = color;
       ctx.lineWidth = isDraft ? 2 : 2.5;
@@ -131,17 +172,40 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       ctx.fillStyle = color;
       ctx.arc(x2, y2, 4, 0, Math.PI * 2);
       ctx.fill();
+
+      // 2. Projeção Futura (Ray / Linha estendida para a direita)
+      if (projectLines && !isDraft) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        if (dx > 0) {
+          const targetX = Math.max(rect.width + 120, x2 + 350);
+          const factor = (targetX - x2) / dx;
+          const projX = targetX;
+          const projY = y2 + factor * dy;
+
+          ctx.beginPath();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.75;
+          ctx.setLineDash([5, 4]);
+          ctx.globalAlpha = 0.8;
+          ctx.moveTo(x2, y2);
+          ctx.lineTo(projX, projY);
+          ctx.stroke();
+        }
+      }
+
       ctx.restore();
     };
 
     // Helper: Desenha Medidor / Régua (Price & Range)
     const drawMeasure = (p1: Point, p2: Point) => {
-      const x1 = timeScale.timeToCoordinate(p1.time as UTCTimestamp);
-      const y1 = mainSeries.priceToCoordinate(p1.price);
-      const x2 = timeScale.timeToCoordinate(p2.time as UTCTimestamp);
-      const y2 = mainSeries.priceToCoordinate(p2.price);
-
-      if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+      const c1 = getCoordinates(p1);
+      const c2 = getCoordinates(p2);
+      if (c1.x === null || c1.y === null || c2.x === null || c2.y === null) return;
+      const x1 = c1.x;
+      const y1 = c1.y;
+      const x2 = c2.x;
+      const y2 = c2.y;
 
       const isBullish = p2.price >= p1.price;
       const color = isBullish ? '#10b981' : '#f43f5e';
@@ -198,6 +262,118 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       ctx.restore();
     };
 
+    // Helper: Desenha Marcador e Alvo de Vértice / Ápice Previsto
+    const drawConvergenceApex = (c: TrendConvergence) => {
+      const apexCoord = getCoordinates({ time: c.apexTime, price: c.apexPrice });
+      if (apexCoord.x === null || apexCoord.y === null) return;
+      const ax = apexCoord.x;
+      const ay = apexCoord.y;
+
+      // Renderiza marcadores visuais no gráfico
+      if (ax >= -100 && ax <= rect.width + 300) {
+        ctx.save();
+
+        // 1. Linha vertical tracejada até o eixo temporal
+        ctx.beginPath();
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.moveTo(ax, 0);
+        ctx.lineTo(ax, rect.height);
+        ctx.stroke();
+
+        // 2. Linha horizontal suave até o eixo de preço
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.35)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.moveTo(0, ay);
+        ctx.lineTo(rect.width, ay);
+        ctx.stroke();
+
+        // 3. Radar Alvo no Ponto de Convergência (Ápice)
+        // Halo externo
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.22)';
+        ctx.arc(ax, ay, 13, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Anel de mira
+        ctx.beginPath();
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.arc(ax, ay, 6.5, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Ponto central brilhante
+        ctx.beginPath();
+        ctx.fillStyle = '#ffffff';
+        ctx.arc(ax, ay, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 4. Badge Flutuante no Ápice
+        const priceText = `$${formatApexPrice(c.apexPrice)}`;
+        const apexLabel = `🎯 ${c.patternName}: ${c.timeFormatted} (${priceText})`;
+        ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
+        const labelW = ctx.measureText(apexLabel).width + 16;
+        const labelH = 24;
+        const labelX = Math.min(Math.max(ax - labelW / 2, 8), rect.width - labelW - 65);
+        const labelY = Math.max(ay - 32, 8);
+
+        ctx.fillStyle = dark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)';
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.roundRect(labelX, labelY, labelW, labelH, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#f59e0b';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(apexLabel, labelX + 8, labelY + labelH / 2);
+
+        // 5. Badge no Eixo Temporal (embaixo)
+        const timeLabel = c.timeFormatted;
+        ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
+        const timeW = ctx.measureText(timeLabel).width + 12;
+        const timeH = 18;
+        const timeX = Math.min(Math.max(ax - timeW / 2, 4), rect.width - timeW - 55);
+        const timeY = rect.height - timeH - 4;
+
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.roundRect(timeX, timeY, timeW, timeH, 3);
+        ctx.fill();
+
+        ctx.fillStyle = '#0f172a';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(timeLabel, timeX + timeW / 2, timeY + timeH / 2);
+
+        // 6. Badge no Eixo de Preço (à direita)
+        const priceFormatted = formatApexPrice(c.apexPrice);
+        const priceW = ctx.measureText(priceFormatted).width + 12;
+        const priceH = 18;
+        const priceX = rect.width - priceW - 4;
+        const priceY = Math.min(Math.max(ay - priceH / 2, 4), rect.height - priceH - 4);
+
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.roundRect(priceX, priceY, priceW, priceH, 3);
+        ctx.fill();
+
+        ctx.fillStyle = '#0f172a';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(priceFormatted, priceX + priceW / 2, priceY + priceH / 2);
+
+        ctx.restore();
+      }
+    };
+
     // 1. Renderizar desenhos fixados salvos
     for (const d of drawings) {
       if (d.type === 'horizontal') drawHorizontal(d.price, d.color);
@@ -211,7 +387,26 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
       if (activeTool === 'trendline') drawTrendline(draftStart, draftCurrent, currentColor, true);
       else if (activeTool === 'measure') drawMeasure(draftStart, draftCurrent);
     }
-  }, [chart, mainSeries, drawings, draftStart, draftCurrent, activeTool, currentColor, dark]);
+
+    // 3. Renderizar alvos de ápice / confluência futura se projeção estiver ativa
+    if (projectLines && convergences && convergences.length > 0) {
+      for (const c of convergences) {
+        drawConvergenceApex(c);
+      }
+    }
+  }, [
+    chart,
+    mainSeries,
+    drawings,
+    draftStart,
+    draftCurrent,
+    activeTool,
+    currentColor,
+    dark,
+    projectLines,
+    convergences,
+    getCoordinates,
+  ]);
 
   // Sincronizar com mudanças de escala e scroll do Lightweight Charts
   useEffect(() => {
@@ -240,7 +435,16 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const time = chart.timeScale().coordinateToTime(x);
+    let time = chart.timeScale().coordinateToTime(x);
+    if (time === null && candles && candles.length >= 2) {
+      const logical = chart.timeScale().coordinateToLogical(x);
+      if (logical !== null) {
+        const lastIndex = candles.length - 1;
+        const intervalSec = Math.max(1, candles[lastIndex].time - candles[lastIndex - 1].time);
+        time = (candles[lastIndex].time + Math.round((logical - lastIndex) * intervalSec)) as UTCTimestamp;
+      }
+    }
+
     const price = mainSeries.coordinateToPrice(y);
     if (price === null) return;
 
@@ -309,7 +513,16 @@ export const DrawingLayer: React.FC<DrawingLayerProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const time = chart.timeScale().coordinateToTime(x);
+    let time = chart.timeScale().coordinateToTime(x);
+    if (time === null && candles && candles.length >= 2) {
+      const logical = chart.timeScale().coordinateToLogical(x);
+      if (logical !== null) {
+        const lastIndex = candles.length - 1;
+        const intervalSec = Math.max(1, candles[lastIndex].time - candles[lastIndex - 1].time);
+        time = (candles[lastIndex].time + Math.round((logical - lastIndex) * intervalSec)) as UTCTimestamp;
+      }
+    }
+
     const price = mainSeries.coordinateToPrice(y);
     if (price === null) return;
 

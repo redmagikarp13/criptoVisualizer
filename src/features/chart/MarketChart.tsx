@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AreaSeries,
   BarSeries,
@@ -18,7 +18,16 @@ import type { IndicatorSettings } from '../settings/preferences';
 import { seriesPatch, type TimedPoint } from './series';
 import { DrawingLayer } from './DrawingLayer';
 import { DrawingToolbar } from './DrawingToolbar';
-import { clearDrawings, loadDrawings, saveDrawings, type Drawing, type DrawingTool } from './drawings';
+import {
+  clearDrawings,
+  findTrendlinesConvergence,
+  formatApexPrice,
+  loadDrawings,
+  saveDrawings,
+  type Drawing,
+  type DrawingTool,
+  type TrendConvergence,
+} from './drawings';
 import { Clock } from 'lucide-react';
 import { useCandleCountdown } from './useCandleCountdown';
 
@@ -84,6 +93,46 @@ export const MarketChart = memo(function MarketChart({
   const [drawings, setDrawings] = useState<Drawing[]>(() => (symbol ? loadDrawings(symbol) : []));
   const [activeTool, setActiveTool] = useState<DrawingTool>('cursor');
   const [currentColor, setCurrentColor] = useState<string>('#38bdf8');
+  const [projectLines, setProjectLines] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('criptovisualizer:project_lines');
+      return saved !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleProjectLines = () => {
+    setProjectLines(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('criptovisualizer:project_lines', String(next));
+      } catch {
+        // ignore persistence failures
+      }
+      return next;
+    });
+  };
+
+  const convergences = useMemo(() => {
+    if (!projectLines) return [];
+    return findTrendlinesConvergence(drawings);
+  }, [projectLines, drawings]);
+
+  const handleFocusApex = (c: TrendConvergence) => {
+    if (!chart.current || !candles.length) return;
+    const lastIndex = candles.length - 1;
+    const lastCandle = candles[lastIndex];
+    const prevCandle = candles[lastIndex - 1] || lastCandle;
+    const intervalSec = Math.max(1, lastCandle.time - prevCandle.time);
+    const logicalOffset = (c.apexTime - lastCandle.time) / intervalSec;
+    const apexLogical = lastIndex + logicalOffset;
+
+    chart.current.timeScale().setVisibleLogicalRange({
+      from: Math.max(0, apexLogical - 75),
+      to: apexLogical + 25,
+    });
+  };
 
   useEffect(() => {
     if (symbol) setDrawings(loadDrawings(symbol));
@@ -453,7 +502,34 @@ export const MarketChart = memo(function MarketChart({
           onChangeColor={setCurrentColor}
           onClearDrawings={handleClearDrawings}
           drawingsCount={drawings.length}
+          projectLines={projectLines}
+          onToggleProjectLines={handleToggleProjectLines}
+          convergencesCount={convergences.length}
         />
+      )}
+
+      {projectLines && convergences.length > 0 && (
+        <div className="trend-convergence-banner" role="status" aria-live="polite">
+          <div className="trend-convergence-pill">
+            <span className="trend-convergence-badge">
+              🎯 {convergences[0].patternName}
+            </span>
+            <span className="trend-convergence-time">
+              Vértice: <strong>{convergences[0].timeFormatted}</strong> ({convergences[0].remainingFormatted})
+            </span>
+            <span className="trend-convergence-price">
+              Alvo: <strong>${formatApexPrice(convergences[0].apexPrice)}</strong>
+            </span>
+            <button
+              type="button"
+              className="trend-convergence-focus-btn"
+              onClick={() => handleFocusApex(convergences[0])}
+              title="Centralizar gráfico no ponto de convergência futura"
+            >
+              Ver Ápice
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="chart-canvas" ref={container} style={{ width: '100%', height: '100%' }} />
@@ -474,6 +550,9 @@ export const MarketChart = memo(function MarketChart({
         onAddDrawing={handleAddDrawing}
         onSelectCursor={() => setActiveTool('cursor')}
         dark={dark}
+        candles={candles}
+        projectLines={projectLines}
+        convergences={convergences}
       />
 
       <span className="sr-only">

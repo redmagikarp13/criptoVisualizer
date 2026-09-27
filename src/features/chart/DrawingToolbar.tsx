@@ -1,5 +1,5 @@
 import React from 'react';
-import { MousePointer, TrendingUp, Minus, SeparatorVertical, Ruler, Trash2 } from 'lucide-react';
+import { MousePointer, TrendingUp, Minus, SeparatorVertical, Ruler, Trash2, Compass } from 'lucide-react';
 import type { DrawingTool } from './drawings';
 
 interface DrawingToolbarProps {
@@ -9,6 +9,9 @@ interface DrawingToolbarProps {
   onChangeColor: (color: string) => void;
   onClearDrawings: () => void;
   drawingsCount: number;
+  projectLines?: boolean;
+  onToggleProjectLines?: () => void;
+  convergencesCount?: number;
 }
 
 const COLORS = [
@@ -27,6 +30,9 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
   onChangeColor,
   onClearDrawings,
   drawingsCount,
+  projectLines = true,
+  onToggleProjectLines,
+  convergencesCount = 0,
 }) => {
   return (
     <div className="drawing-toolbar" role="toolbar" aria-label="Ferramentas de Desenho">
@@ -49,6 +55,24 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
         >
           <TrendingUp size={15} />
         </button>
+        {onToggleProjectLines && (
+          <button
+            type="button"
+            className={`drawing-tool-btn ${projectLines ? 'active' : ''}`}
+            onClick={onToggleProjectLines}
+            title={`Projeção de Tendência & Vértice de Rompimento (${projectLines ? 'Ativada' : 'Desativada'})`}
+            aria-label="Projeção de Tendência"
+            style={{ position: 'relative' }}
+          >
+            <Compass size={15} />
+            {convergencesCount > 0 && (
+              <span
+                className="drawing-tool-badge"
+                title={`${convergencesCount} ponto(s) de convergência previsto(s)`}
+              />
+            )}
+          </button>
+        )}
         <button
           type="button"
           className={`drawing-tool-btn ${activeTool === 'horizontal' ? 'active' : ''}`}
