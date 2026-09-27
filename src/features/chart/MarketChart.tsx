@@ -32,6 +32,7 @@ interface Props {
   chartType?: ChartViewType;
   symbol?: string;
   showToolbar?: boolean;
+  onChartReady?: (api: IChartApi | null) => void;
 }
 
 function getPriceFormat(candles: Candle[]) {
@@ -57,10 +58,14 @@ export const MarketChart = memo(function MarketChart({
   chartType = 'candles',
   symbol = '',
   showToolbar = true,
+  onChartReady,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const [chartReadyApi, setChartReadyApi] = useState<IChartApi | null>(null);
+  const onChartReadyRef = useRef(onChartReady);
+  onChartReadyRef.current = onChartReady;
+
   const series = useRef(new Map<string, ISeriesApi<SeriesType>>());
   const [mainSeriesApi, setMainSeriesApi] = useState<ISeriesApi<SeriesType> | null>(null);
   const previous = useRef(new Map<string, ChartPoint[]>());
@@ -169,6 +174,7 @@ export const MarketChart = memo(function MarketChart({
 
     chart.current = api;
     setChartReadyApi(api);
+    onChartReadyRef.current?.(api);
     const currentSeries = series.current;
     const currentPrevious = previous.current;
 
@@ -287,6 +293,7 @@ export const MarketChart = memo(function MarketChart({
     setError('');
 
     return () => {
+      onChartReadyRef.current?.(null);
       api.remove();
       chart.current = null;
       setChartReadyApi(null);

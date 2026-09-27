@@ -1,6 +1,7 @@
 import React, { memo, useState } from 'react';
 import { Maximize2, Minimize2, Activity } from 'lucide-react';
 import type { Candle } from '../../lib/types';
+import type { IChartApi } from 'lightweight-charts';
 import { intervals } from '../../lib/types';
 import type { IndicatorSettings } from '../settings/preferences';
 import { MarketChart, type ChartViewType } from '../chart/MarketChart';
@@ -23,6 +24,7 @@ interface ChartPaneProps {
   isPrimary: boolean;
   primaryCandles: Candle[];
   primaryIndicators?: IndicatorResult | null;
+  onChartReady?: (paneId: string, api: IChartApi | null) => void;
 }
 
 export const ChartPane = memo(function ChartPane({
@@ -38,6 +40,7 @@ export const ChartPane = memo(function ChartPane({
   isPrimary,
   primaryCandles,
   primaryIndicators = null,
+  onChartReady,
 }: ChartPaneProps) {
   const [isEditingSymbol, setIsEditingSymbol] = useState(false);
   const [symbolInput, setSymbolInput] = useState(pane.symbol);
@@ -198,6 +201,7 @@ export const ChartPane = memo(function ChartPane({
             chartType={pane.chartType}
             symbol={pane.symbol}
             showToolbar={isActive}
+            onChartReady={api => onChartReady?.(pane.id, api)}
           />
         ) : (
           <div className="pane-empty-state">

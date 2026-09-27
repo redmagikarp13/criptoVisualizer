@@ -70,4 +70,15 @@ describe('área de trabalho', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     unmount();
   });
+  it('permite recolher e expandir a barra lateral esquerda para maximizar os gráficos', async () => {
+    const { container, unmount } = render(<App />);
+    const toggleBtn = await screen.findByRole('button', { name: 'Recolher lista de mercados' });
+    expect(container.querySelector('.workspace')).not.toHaveClass('watchlist-collapsed');
+    fireEvent.click(toggleBtn);
+    expect(container.querySelector('.workspace')).toHaveClass('watchlist-collapsed');
+    const openBtn = await screen.findByRole('button', { name: 'Mostrar lista de mercados' });
+    fireEvent.click(openBtn);
+    expect(container.querySelector('.workspace')).not.toHaveClass('watchlist-collapsed');
+    unmount();
+  });
 });

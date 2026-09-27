@@ -1,5 +1,6 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { LayoutGrid } from 'lucide-react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { LayoutGrid, Link2, Unlink } from 'lucide-react';
+import type { IChartApi, LogicalRange } from 'lightweight-charts';
 import type { Candle, Interval } from '../../lib/types';
 import type { IndicatorSettings } from '../settings/preferences';
 import type { IndicatorResult } from '../indicators/calculations';
@@ -75,17 +76,47 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
   const [activePaneId, setActivePaneId] = useState<string>('pane-0');
   const [maximizedPaneId, setMaximizedPaneId] = useState<string | null>(null);
 
-  // Sincroniza o primeiro painel com o símbolo primário se modificado externamente
+  // Sincronização de zoom e movimento entre gráficos
+  const [syncCharts, setSyncCharts] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('criptovisualizer:sync-charts');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const syncChartsRef = useRef(syncCharts);
+  syncChartsRef.current = syncCharts;
+
+  const chartApis = useRef<Map<string, IChartApi>>(new Map());
+  const isSyncingRef = useRef(false);
+  const unsubscribers = useRef<Map<string, () => void>>(new Map());
+
+  const isSelectingPane = useRef(false);
+
+  // Sincroniza o painel ativo com alterações externas de símbolo/intervalo (ex: busca ou favoritos)
   useEffect(() => {
+    if (isSelectingPane.current) {
+      isSelectingPane.current = false;
+      return;
+    }
     setPanes(prev => {
-      if (prev[0] && (prev[0].symbol !== primarySymbol || prev[0].interval !== primaryInterval)) {
+      const idx = prev.findIndex(p => p.id === activePaneId);
+      const targetIdx = idx >= 0 ? idx : 0;
+      if (prev[targetIdx] && (prev[targetIdx].symbol !== primarySymbol || prev[targetIdx].interval !== primaryInterval)) {
         const updated = [...prev];
-        updated[0] = { ...updated[0], symbol: primarySymbol, interval: primaryInterval };
+        updated[targetIdx] = { ...updated[targetIdx], symbol: primarySymbol, interval: primaryInterval };
+        try {
+          localStorage.setItem('criptovisualizer:chart-panes', JSON.stringify(updated));
+        } catch {
+          // ignore
+        }
         return updated;
       }
       return prev;
     });
-  }, [primarySymbol, primaryInterval]);
+  }, [primarySymbol, primaryInterval, activePaneId]);
 
   const handleSelectLayout = (newLayout: ChartLayout) => {
     setLayout(newLayout);
@@ -120,9 +151,96 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
   }, [activePaneId, panes, onActiveSymbolChange]);
 
   const handleSelectPane = useCallback((pane: ChartPaneConfig) => {
+    isSelectingPane.current = true;
     setActivePaneId(pane.id);
     onActiveSymbolChange(pane.symbol, pane.interval);
   }, [onActiveSymbolChange]);
+
+  const handleChartReady = useCallback((paneId: string, api: IChartApi | null) => {
+    if (unsubscribers.current.has(paneId)) {
+      unsubscribers.current.get(paneId)?.();
+      unsubscribers.current.delete(paneId);
+    }
+
+    if (!api) {
+      chartApis.current.delete(paneId);
+      return;
+    }
+
+    chartApis.current.set(paneId, api);
+
+    const onRangeChanged = (range: LogicalRange | null) => {
+      if (!syncChartsRef.current || isSyncingRef.current || !range) return;
+      isSyncingRef.current = true;
+      for (const [id, targetApi] of chartApis.current.entries()) {
+        if (id !== paneId) {
+          try {
+            targetApi.timeScale().setVisibleLogicalRange(range);
+          } catch {
+            // ignore
+          }
+        }
+      }
+      isSyncingRef.current = false;
+    };
+
+    api.timeScale().subscribeVisibleLogicalRangeChange(onRangeChanged);
+    unsubscribers.current.set(paneId, () => {
+      try {
+        api.timeScale().unsubscribeVisibleLogicalRangeChange(onRangeChanged);
+      } catch {
+        // ignore
+      }
+    });
+
+    // Se a sincronização estiver ligada e já houver outro gráfico com range visível, alinha o novo gráfico
+    if (syncChartsRef.current && chartApis.current.size > 1) {
+      for (const [otherId, otherApi] of chartApis.current.entries()) {
+        if (otherId !== paneId) {
+          const range = otherApi.timeScale().getVisibleLogicalRange();
+          if (range) {
+            try {
+              api.timeScale().setVisibleLogicalRange(range);
+            } catch {
+              // ignore
+            }
+            break;
+          }
+        }
+      }
+    }
+  }, []);
+
+  const handleToggleSync = () => {
+    setSyncCharts(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('criptovisualizer:sync-charts', String(next));
+      } catch {
+        // ignore
+      }
+      if (next) {
+        const activeApi = chartApis.current.get(activePaneId) || chartApis.current.values().next().value;
+        if (activeApi) {
+          const range = activeApi.timeScale().getVisibleLogicalRange();
+          if (range) {
+            isSyncingRef.current = true;
+            for (const [id, targetApi] of chartApis.current.entries()) {
+              if (id !== activePaneId) {
+                try {
+                  targetApi.timeScale().setVisibleLogicalRange(range);
+                } catch {
+                  // ignore
+                }
+              }
+            }
+            isSyncingRef.current = false;
+          }
+        }
+      }
+      return next;
+    });
+  };
 
   const capacity = LAYOUT_CAPACITIES[layout];
   const visiblePanes = useMemo(() => {
@@ -154,6 +272,21 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
           ))}
         </div>
 
+        {/* Botão de Sincronização de Zoom e Scroll */}
+        <button
+          type="button"
+          className={`multichart-sync-btn ${syncCharts ? 'active' : ''}`}
+          onClick={handleToggleSync}
+          title={
+            syncCharts
+              ? 'Sincronização de zoom e movimento ativada (clique para desacoplar)'
+              : 'Clique para sincronizar zoom e movimento de todos os gráficos'
+          }
+        >
+          {syncCharts ? <Link2 size={13} /> : <Unlink size={13} />}
+          <span>{syncCharts ? 'Zoom Sincronizado' : 'Zoom Independente'}</span>
+        </button>
+
         {maximizedPaneId && (
           <button
             type="button"
@@ -168,8 +301,8 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
 
       {/* Grade de Gráficos CSS Grid */}
       <div className={`multichart-grid multichart-layout-${maximizedPaneId ? '1x1' : layout}`}>
-        {visiblePanes.map((pane, index) => {
-          const isPrimary = index === 0;
+        {visiblePanes.map(pane => {
+          const isPrimary = pane.id === activePaneId;
           return (
             <ChartPane
               key={pane.id}
@@ -185,6 +318,7 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
               isPrimary={isPrimary}
               primaryCandles={primaryCandles}
               primaryIndicators={primaryIndicators}
+              onChartReady={handleChartReady}
             />
           );
         })}

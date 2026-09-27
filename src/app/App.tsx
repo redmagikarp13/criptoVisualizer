@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MultiChartGrid } from '../features/multichart/MultiChartGrid';
 import { AnalysisPanel } from '../features/analysis/AnalysisPanel';
-import { Activity, PanelRightClose, PanelRightOpen, Search, Settings, Star, RefreshCw, Bell, BellRing, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Activity, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Search, Settings, Star, RefreshCw, Bell, BellRing, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { desktop } from '../lib/desktop';
 import { errorMessage, intervals, type BrStockSearchResult, type Candle, type CliStatus } from '../lib/types';
 import { defaultPreferences, type Preferences } from '../features/settings/preferences';
@@ -39,6 +39,26 @@ export function App() {
   const [warning, setWarning] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [analysisOpen, setAnalysisOpen] = useState(true);
+  const [watchlistOpen, setWatchlistOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('criptovisualizer:watchlist-open');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleWatchlist = () => {
+    setWatchlistOpen(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('criptovisualizer:watchlist-open', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
   const [statuses, setStatuses] = useState<CliStatus[]>([]);
   const [query, setQuery] = useState('');
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -352,10 +372,20 @@ export function App() {
 
   return (
     <div
-      className={`workspace ${analysisOpen ? '' : 'analysis-collapsed'} ${isResizingSidebar ? 'is-resizing' : ''} ${isResizingChart ? 'is-resizing-v' : ''}`}
+      className={`workspace ${watchlistOpen ? '' : 'watchlist-collapsed'} ${analysisOpen ? '' : 'analysis-collapsed'} ${isResizingSidebar ? 'is-resizing' : ''} ${isResizingChart ? 'is-resizing-v' : ''}`}
       style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
     >
       <header className="app-header">
+        <button
+          type="button"
+          className="icon-button watchlist-header-toggle"
+          aria-label={watchlistOpen ? 'Recolher lista de mercados' : 'Mostrar lista de mercados'}
+          aria-expanded={watchlistOpen}
+          onClick={handleToggleWatchlist}
+          title={watchlistOpen ? 'Recolher lista lateral (maximizar gráficos)' : 'Mostrar lista de mercados'}
+        >
+          {watchlistOpen ? <PanelLeftClose size={19} /> : <PanelLeftOpen size={19} />}
+        </button>
         <a className="brand" href="#market">
           <Activity size={22} aria-hidden="true" />
           <span>CriptoVisualizer</span>
@@ -383,7 +413,18 @@ export function App() {
       <aside className="watchlist" aria-label="Pares e favoritos">
         <div className="panel-heading">
           <h2>Mercado</h2>
-          <span className="muted">{isCurrentB3 ? 'B3' : (splitSymbol(preferences.symbol)?.quote ?? 'Spot')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="muted">{isCurrentB3 ? 'B3' : (splitSymbol(preferences.symbol)?.quote ?? 'Spot')}</span>
+            <button
+              type="button"
+              className="icon-button panel-close-mini-btn"
+              onClick={handleToggleWatchlist}
+              title="Recolher lista lateral (maximizar gráficos)"
+              aria-label="Recolher lista lateral"
+            >
+              <PanelLeftClose size={15} />
+            </button>
+          </div>
         </div>
 
         {/* Busca unificada: criptomoedas Binance + ações B3 */}
