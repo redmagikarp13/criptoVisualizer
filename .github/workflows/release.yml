@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && (matrix.args == '--target aarch64-apple-darwin' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin') || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and Publish Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'CriptoVisualizer v__VERSION__'
+          releaseBody: |
+            Release oficial do **CriptoVisualizer**.
+
+            ### 📦 Binários Disponíveis:
+            - **Windows**: Instalador `.exe` (NSIS) ou `.msi`
+            - **macOS**:
+              - Apple Silicon (M1/M2/M3/M4): `aarch64.dmg`
+              - Intel: `x64.dmg`
+
+            ### ✨ Recursos:
+            - Gráficos em tempo real com **TradingView Lightweight Charts v5**
+            - Multi-Chart Grid (1x1, 1x2, 2x1, 2x2, 1+2, 3x3, 4x4)
+            - Tipos de gráfico: Candlesticks, Heikin-Ashi, Linha, Área, Barras
+            - Ferramentas de desenho completas (Linha de Tendência, Suporte/Resistência, Medidor)
+            - Indicadores técnicos avançados (SMA, EMA rápida/lenta, Bollinger, RSI, MACD, Volume SMA 20, VWAP, SuperTrend, Estocástico)
+            - Order Book multi-exchange (Binance, OKX, Bybit) com opção de fusão de livros e detecção de spoofing
+            - Ações da B3 com busca unificada e histórico via brapi.dev
+            - Widget compacto flutuante no macOS
+            - Integração local com agentes de IA (Qoder e Antigravity) para análise técnica contextual
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

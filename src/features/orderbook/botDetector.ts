@@ -1,6 +1,8 @@
 import { useRef, useMemo } from 'react';
 import type { DepthLevel, OrderBook } from '../../lib/types';
 
+export type WallPersistence = 'recent' | 'consolidating' | 'solid' | 'rock';
+
 export interface BotWall {
   side: 'bid' | 'ask';
   price: number;
@@ -8,6 +10,8 @@ export interface BotWall {
   ratioToAverage: number;
   distancePercent: number;
   isHeavy: boolean;
+  ageSeconds?: number;
+  persistence?: WallPersistence;
 }
 
 export interface SpoofAlert {
@@ -21,6 +25,22 @@ export interface SpoofAlert {
 
 export type BotPressureDirection = 'pushing_up' | 'pushing_down' | 'neutral';
 export type BotPressureIntensity = 'strong' | 'moderate' | 'weak';
+
+export interface DepthSample {
+  time: number;
+  score: number; // -100 a +100
+  bidPressurePct: number;
+}
+
+export interface RollingAverages {
+  sampleDurationSec: number;
+  samplesCount: number;
+  avgPressure1m: number | null;
+  avgPressure5m: number | null;
+  avgPressure15m: number | null;
+  consistency: 'bullish_confirmed' | 'bearish_confirmed' | 'divergent' | 'neutral';
+  consistencyHeadline: string;
+}
 
 export interface BotIntentAnalysis {
   direction: BotPressureDirection;
@@ -47,6 +67,7 @@ export interface BotAnalysis {
   algorithmicBias: 'bullish' | 'bearish' | 'neutral';
   summaryText: string;
   intent: BotIntentAnalysis;
+  rolling?: RollingAverages;
 }
 
 export interface BufferFrame {
@@ -132,6 +153,8 @@ export function analyzeOrderBookBots(
         ratioToAverage: effectiveRatio,
         distancePercent,
         isHeavy: ratioAvg >= 4.0 || shareOfSide >= 0.20,
+        ageSeconds: 0,
+        persistence: 'recent',
       });
     }
   }
@@ -156,6 +179,8 @@ export function analyzeOrderBookBots(
         ratioToAverage: effectiveRatio,
         distancePercent,
         isHeavy: ratioAvg >= 4.0 || shareOfSide >= 0.20,
+        ageSeconds: 0,
+        persistence: 'recent',
       });
     }
   }
@@ -401,14 +426,180 @@ const defaultIntent: BotIntentAnalysis = {
   askPressurePct: 50,
 };
 
+export const SAMPLE_INTERVAL_MS = 2000; // 1 amostra a cada 2s
+export const MAX_SAMPLE_WINDOW_MS = 15 * 60 * 1000; // 15 minutos de retenção máxima
+export const MAX_SAMPLES = 450; // 900s / 2s
+
+export function formatWallAge(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const remainingSecs = seconds % 60;
+  if (mins < 10 && remainingSecs > 0) return `${mins}m ${remainingSecs}s`;
+  return `${mins}m`;
+}
+
+export interface TrackedWall {
+  side: 'bid' | 'ask';
+  price: number;
+  firstSeen: number;
+  lastSeen: number;
+}
+
 /**
- * Hook para monitorar o orderbook em tempo real com anel de histórico em memória.
+ * Atualiza o rastreamento contínuo das paredes de Market Maker ao longo do tempo.
+ * Calcula o tempo de permanência no mesmo nível de preço (persistência).
+ */
+export function updateTrackedWalls(
+  activeWalls: BotWall[],
+  tracked: Map<string, TrackedWall>,
+  now: number
+): BotWall[] {
+  const result: BotWall[] = [];
+
+  for (const wall of activeWalls) {
+    let matchedKey: string | null = null;
+    let matchedTracked: TrackedWall | null = null;
+
+    for (const [key, t] of tracked.entries()) {
+      if (t.side === wall.side && Math.abs(t.price - wall.price) / wall.price < 0.0005) {
+        matchedKey = key;
+        matchedTracked = t;
+        break;
+      }
+    }
+
+    let ageSeconds = 0;
+    if (matchedTracked && matchedKey) {
+      matchedTracked.lastSeen = now;
+      ageSeconds = Math.max(0, Math.round((now - matchedTracked.firstSeen) / 1000));
+    } else {
+      const newKey = `${wall.side}-${wall.price.toFixed(6)}`;
+      tracked.set(newKey, {
+        side: wall.side,
+        price: wall.price,
+        firstSeen: now,
+        lastSeen: now,
+      });
+      ageSeconds = 0;
+    }
+
+    let persistence: WallPersistence = 'recent';
+    if (ageSeconds >= 600) {
+      persistence = 'rock';
+    } else if (ageSeconds >= 180) {
+      persistence = 'solid';
+    } else if (ageSeconds >= 30) {
+      persistence = 'consolidating';
+    }
+
+    result.push({
+      ...wall,
+      ageSeconds,
+      persistence,
+    });
+  }
+
+  // Descarta paredes rastreadas que desapareceram há mais de 4 segundos
+  for (const [key, t] of tracked.entries()) {
+    if (now - t.lastSeen > 4000) {
+      tracked.delete(key);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Calcula médias móveis de pressão e consistência direcional sobre a amostragem de até 15 minutos.
+ */
+export function computeRollingMetrics(
+  samples: DepthSample[],
+  now: number,
+  instantBidPressure: number
+): RollingAverages {
+  if (samples.length === 0) {
+    return {
+      sampleDurationSec: 0,
+      samplesCount: 0,
+      avgPressure1m: null,
+      avgPressure5m: null,
+      avgPressure15m: null,
+      consistency: 'neutral',
+      consistencyHeadline: 'Coletando amostragem histórica…',
+    };
+  }
+
+  const oldestTime = samples[0].time;
+  const sampleDurationSec = Math.max(1, Math.round((now - oldestTime) / 1000));
+
+  // Amostras nos últimos 60s (1m)
+  const samples1m = samples.filter(s => now - s.time <= 60_000);
+  const avgPressure1m = samples1m.length >= 2
+    ? Math.round(samples1m.reduce((sum, s) => sum + s.bidPressurePct, 0) / samples1m.length)
+    : null;
+
+  // Amostras nos últimos 300s (5m)
+  const samples5m = samples.filter(s => now - s.time <= 300_000);
+  const avgPressure5m = samples5m.length >= 6
+    ? Math.round(samples5m.reduce((sum, s) => sum + s.bidPressurePct, 0) / samples5m.length)
+    : null;
+
+  // Amostras nos últimos 900s (15m)
+  const samples15m = samples.filter(s => now - s.time <= 900_000);
+  const avgPressure15m = samples15m.length >= 15
+    ? Math.round(samples15m.reduce((sum, s) => sum + s.bidPressurePct, 0) / samples15m.length)
+    : null;
+
+  // Análise de consistência entre a pressão instantânea e a média de longo prazo
+  const referenceAvg = avgPressure5m ?? avgPressure1m;
+  let consistency: 'bullish_confirmed' | 'bearish_confirmed' | 'divergent' | 'neutral' = 'neutral';
+  let consistencyHeadline = 'Amostragem em andamento';
+
+  if (referenceAvg !== null) {
+    const isInstantBullish = instantBidPressure >= 58;
+    const isInstantBearish = instantBidPressure <= 42;
+    const isAvgBullish = referenceAvg >= 55;
+    const isAvgBearish = referenceAvg <= 45;
+
+    if (isInstantBullish && isAvgBullish) {
+      consistency = 'bullish_confirmed';
+      consistencyHeadline = 'Alta consistente no histórico';
+    } else if (isInstantBearish && isAvgBearish) {
+      consistency = 'bearish_confirmed';
+      consistencyHeadline = 'Baixa consistente no histórico';
+    } else if ((isInstantBullish && isAvgBearish) || (isInstantBearish && isAvgBullish)) {
+      consistency = 'divergent';
+      consistencyHeadline = 'Divergência: Pressão momentânea vs Média';
+    } else {
+      consistency = 'neutral';
+      consistencyHeadline = 'Equilíbrio nas médias históricas';
+    }
+  }
+
+  return {
+    sampleDurationSec,
+    samplesCount: samples.length,
+    avgPressure1m,
+    avgPressure5m,
+    avgPressure15m,
+    consistency,
+    consistencyHeadline,
+  };
+}
+
+/**
+ * Hook para monitorar o orderbook em tempo real com anel rápido (HFT/spoofing)
+ * e amostragem histórica de persistência de até 15 minutos (médias 1m/5m/15m e idade das paredes).
  */
 export function useBotDetector(depth: OrderBook | null, currentPrice: number = 0) {
   const bufferRef = useRef<BufferFrame[]>([]);
   const spoofAlertsRef = useRef<SpoofAlert[]>([]);
+  const samplesRef = useRef<DepthSample[]>([]);
+  const trackedWallsRef = useRef<Map<string, TrackedWall>>(new Map());
+  const lastSymbolRef = useRef<string | null>(null);
+  const lastSampleTimeRef = useRef<number>(0);
 
-  const result = useMemo(() => {
+  const result = useMemo<BotAnalysis>(() => {
     if (!depth) {
       return {
         activeWalls: [],
@@ -421,13 +612,27 @@ export function useBotDetector(depth: OrderBook | null, currentPrice: number = 0
         algorithmicBias: 'neutral' as const,
         summaryText: 'Aguardando conexão com o livro…',
         intent: defaultIntent,
+        rolling: undefined,
       };
+    }
+
+    const now = Date.now();
+
+    // Limpa os históricos caso o usuário mude de par
+    if (depth.symbol && lastSymbolRef.current && lastSymbolRef.current !== depth.symbol) {
+      bufferRef.current = [];
+      spoofAlertsRef.current = [];
+      samplesRef.current = [];
+      trackedWallsRef.current.clear();
+      lastSampleTimeRef.current = 0;
+    }
+    if (depth.symbol) {
+      lastSymbolRef.current = depth.symbol;
     }
 
     const { analysis, newSpoofAlerts } = analyzeOrderBookBots(depth, bufferRef.current, currentPrice);
 
     // Adiciona novos alertas de spoofing deduplicando por preço aproximado e janela de tempo recente
-    const now = Date.now();
     for (const newAlert of newSpoofAlerts) {
       const exists = spoofAlertsRef.current.some(
         a => a.side === newAlert.side && Math.abs(a.price - newAlert.price) / a.price < 0.0005 && now - a.detectedAt < 4000
@@ -442,7 +647,7 @@ export function useBotDetector(depth: OrderBook | null, currentPrice: number = 0
       .filter(a => now - a.detectedAt <= SPOOF_EXPIRY_MS)
       .slice(0, 5);
 
-    // Atualiza anel de histórico (FIFO)
+    // 1. Atualiza anel de alta frequência para Spoofing e HFT (~4s)
     const newFrame: BufferFrame = {
       time: now,
       bids: depth.bids,
@@ -456,9 +661,37 @@ export function useBotDetector(depth: OrderBook | null, currentPrice: number = 0
       bufferRef.current.shift();
     }
 
+    // 2. Camada Amostrada Leve (a cada 2s, até 15 minutos = 450 amostras)
+    if (now - lastSampleTimeRef.current >= SAMPLE_INTERVAL_MS || samplesRef.current.length === 0) {
+      samplesRef.current.push({
+        time: now,
+        score: analysis.intent.score,
+        bidPressurePct: analysis.intent.bidPressurePct,
+      });
+      lastSampleTimeRef.current = now;
+
+      const minTime = now - MAX_SAMPLE_WINDOW_MS;
+      while (samplesRef.current.length > 0 && samplesRef.current[0].time < minTime) {
+        samplesRef.current.shift();
+      }
+      if (samplesRef.current.length > MAX_SAMPLES) {
+        samplesRef.current.splice(0, samplesRef.current.length - MAX_SAMPLES);
+      }
+    }
+
+    // 3. Métricas de amostragem histórica e rastreamento de persistência de paredes
+    const rolling = computeRollingMetrics(samplesRef.current, now, analysis.intent.bidPressurePct);
+    const wallsWithPersistence = updateTrackedWalls(analysis.activeWalls, trackedWallsRef.current, now);
+    const topBidWall = wallsWithPersistence.find(w => w.side === 'bid') ?? null;
+    const topAskWall = wallsWithPersistence.find(w => w.side === 'ask') ?? null;
+
     return {
       ...analysis,
+      activeWalls: wallsWithPersistence,
+      topBidWall,
+      topAskWall,
       spoofAlerts: [...spoofAlertsRef.current],
+      rolling,
     };
   }, [depth, currentPrice]);
 

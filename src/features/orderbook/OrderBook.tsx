@@ -1,10 +1,14 @@
 import { useState, useMemo } from 'react';
-import type { OrderBook as OrderBookType } from '../../lib/types';
-import { TrendingDown, TrendingUp, Bot, ShieldAlert, Zap, ChevronDown, ChevronUp, Target, Compass } from 'lucide-react';
-import { useBotDetector } from './botDetector';
+import type { Exchange, OrderBook as OrderBookType } from '../../lib/types';
+import { TrendingDown, TrendingUp, Bot, ShieldAlert, Zap, ChevronDown, ChevronUp, Target, Compass, Clock } from 'lucide-react';
+import { useBotDetector, formatWallAge } from './botDetector';
+import { mergeOrderBooks } from './mergeBooks';
 
-interface OrderBookProps {
+export interface OrderBookProps {
   depth: OrderBookType | null;
+  depths?: Partial<Record<Exchange, OrderBookType>>;
+  selectedExchange?: Exchange | 'merged';
+  onSelectExchange?: (exchange: Exchange | 'merged') => void;
   currentPrice?: number;
   onSelectPrice?: (price: number) => void;
   maxLevels?: number;
@@ -26,12 +30,62 @@ const formatAmount = (val: number) => {
   return val.toFixed(1);
 };
 
-export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 10 }: OrderBookProps) {
+export function OrderBookView({
+  depth,
+  depths,
+  selectedExchange,
+  onSelectExchange,
+  currentPrice,
+  onSelectPrice,
+  maxLevels = 10,
+}: OrderBookProps) {
   const [radarExpanded, setRadarExpanded] = useState(true);
-  const botAnalysis = useBotDetector(depth, currentPrice);
+  const [internalExchange, setInternalExchange] = useState<Exchange | 'merged'>(() => {
+    try {
+      const saved = localStorage.getItem('criptovisualizer:orderbook-exchange');
+      return saved === 'okx' || saved === 'bybit' || saved === 'merged' ? saved : 'binance';
+    } catch {
+      return 'binance';
+    }
+  });
 
-  const { asks, bids, totalBidQty, totalAskQty, maxDepth, spread, spreadPercent, bidPercent } = useMemo(() => {
-    if (!depth || depth.bids.length === 0 || depth.asks.length === 0) {
+  const currentExchange = selectedExchange ?? internalExchange;
+
+  const handleSelectExchange = (ex: Exchange | 'merged') => {
+    setInternalExchange(ex);
+    onSelectExchange?.(ex);
+    try {
+      localStorage.setItem('criptovisualizer:orderbook-exchange', ex);
+    } catch {
+      // Ignora erro de localStorage indisponível
+    }
+  };
+
+  const activeDepth = useMemo(() => {
+    if (currentExchange === 'merged') {
+      const allBooks = [depths?.binance ?? depth, depths?.okx, depths?.bybit];
+      return mergeOrderBooks(allBooks, depth?.symbol ?? 'BTCUSDT');
+    }
+    if (currentExchange === 'okx') return depths?.okx ?? null;
+    if (currentExchange === 'bybit') return depths?.bybit ?? null;
+    return depths?.binance ?? depth ?? null;
+  }, [currentExchange, depth, depths]);
+
+  const availableSources = useMemo(() => {
+    const list: { key: Exchange; name: string; hasData: boolean }[] = [
+      { key: 'binance', name: 'Binance', hasData: Boolean((depths?.binance ?? depth)?.bids?.length) },
+      { key: 'okx', name: 'OKX', hasData: Boolean(depths?.okx?.bids?.length) },
+      { key: 'bybit', name: 'Bybit', hasData: Boolean(depths?.bybit?.bids?.length) },
+    ];
+    return list;
+  }, [depths, depth]);
+
+  const activeCount = availableSources.filter(s => s.hasData).length;
+
+  const botAnalysis = useBotDetector(activeDepth, currentPrice);
+
+  const { asks, bids, totalBidQty, totalAskQty, maxDepth, spread, spreadPercent, bidPercent, bestBid, bestAsk } = useMemo(() => {
+    if (!activeDepth || activeDepth.bids.length === 0 || activeDepth.asks.length === 0) {
       return {
         asks: [],
         bids: [],
@@ -41,12 +95,14 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
         spread: 0,
         spreadPercent: 0,
         bidPercent: 50,
+        bestBid: 0,
+        bestAsk: 0,
       };
     }
 
     // Limit to maxLevels
-    const rawAsks = depth.asks.slice(0, maxLevels);
-    const rawBids = depth.bids.slice(0, maxLevels);
+    const rawAsks = activeDepth.asks.slice(0, maxLevels);
+    const rawBids = activeDepth.bids.slice(0, maxLevels);
 
     // Calculate cumulative amounts
     let askCum = 0;
@@ -62,10 +118,10 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
     });
 
     const maxDepthVal = Math.max(askCum, bidCum, 1);
-    const bestBid = rawBids[0]?.price ?? 0;
-    const bestAsk = rawAsks[0]?.price ?? 0;
-    const spr = Math.max(0, bestAsk - bestBid);
-    const sprPct = bestAsk > 0 ? (spr / bestAsk) * 100 : 0;
+    const bBid = rawBids[0]?.price ?? 0;
+    const bAsk = rawAsks[0]?.price ?? 0;
+    const spr = Math.max(0, bAsk - bBid);
+    const sprPct = bAsk > 0 ? (spr / bAsk) * 100 : 0;
 
     const bidVol = rawBids.reduce((sum, b) => sum + b.amount, 0);
     const askVol = rawAsks.reduce((sum, a) => sum + a.amount, 0);
@@ -84,21 +140,83 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
       spread: spr,
       spreadPercent: sprPct,
       bidPercent: bidPct,
+      bestBid: bBid,
+      bestAsk: bAsk,
     };
-  }, [depth, maxLevels]);
-
-  if (!depth || depth.bids.length === 0) {
-    return (
-      <div className="orderbook-empty">
-        <p className="muted">Carregando livro de ofertas em tempo real…</p>
-      </div>
-    );
-  }
+  }, [activeDepth, maxLevels]);
 
   const askPercent = 100 - bidPercent;
 
   return (
     <div className="orderbook-container" aria-label="Livro de Ofertas">
+      {/* Seletor de Exchanges & Consolidado */}
+      <div className="orderbook-exchange-tabs" role="tablist" aria-label="Fonte do Livro de Ofertas">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={currentExchange === 'binance'}
+          className={`ob-tab ${currentExchange === 'binance' ? 'active' : ''}`}
+          onClick={() => handleSelectExchange('binance')}
+        >
+          Binance
+          <span className={`tab-dot ${(depths?.binance ?? depth)?.bids?.length ? 'live' : 'idle'}`} />
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={currentExchange === 'okx'}
+          className={`ob-tab ${currentExchange === 'okx' ? 'active' : ''}`}
+          onClick={() => handleSelectExchange('okx')}
+        >
+          OKX
+          <span className={`tab-dot ${depths?.okx?.bids?.length ? 'live' : 'idle'}`} />
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={currentExchange === 'bybit'}
+          className={`ob-tab ${currentExchange === 'bybit' ? 'active' : ''}`}
+          onClick={() => handleSelectExchange('bybit')}
+        >
+          Bybit
+          <span className={`tab-dot ${depths?.bybit?.bids?.length ? 'live' : 'idle'}`} />
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={currentExchange === 'merged'}
+          className={`ob-tab ${currentExchange === 'merged' ? 'active' : ''}`}
+          onClick={() => handleSelectExchange('merged')}
+          title="Mesclar livros de ofertas de todas as corretoras conectadas"
+        >
+          Consolidado
+          {activeCount > 1 && <span className="tab-count">{activeCount}x</span>}
+        </button>
+      </div>
+
+      {currentExchange === 'merged' && (
+        <div className="orderbook-merged-badge">
+          <span>Multicorretoras</span>
+          <span className="sources">
+            {availableSources.map(s => (
+              <span key={s.key} className={`source-tag ${s.hasData ? 'active' : 'inactive'}`}>
+                {s.name}
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+
+      {(!activeDepth || activeDepth.bids.length === 0) ? (
+        <div className="orderbook-empty">
+          <p className="muted">
+            {currentExchange === 'merged'
+              ? 'Carregando livro de ofertas em tempo real (Consolidado)…'
+              : `Carregando livro de ofertas em tempo real (${currentExchange === 'okx' ? 'OKX' : currentExchange === 'bybit' ? 'Bybit' : 'Binance'})…`}
+          </p>
+        </div>
+      ) : (
+        <>
       {/* Radar de Bots & Market Makers */}
       <section className="bot-radar-card" aria-label="Detector de Bots e Market Makers">
         <div className="bot-radar-header" onClick={() => setRadarExpanded(!radarExpanded)}>
@@ -113,6 +231,14 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
             {botAnalysis.spoofAlerts.length > 0 && (
               <span className="spoof-badge" title="Spoofing (ordem falsa) detectado">
                 <ShieldAlert size={10} /> Spoofing!
+              </span>
+            )}
+            {botAnalysis.rolling && botAnalysis.rolling.sampleDurationSec >= 4 && (
+              <span
+                className="sample-duration-badge"
+                title={`Amostragem histórica contínua de ${botAnalysis.rolling.samplesCount} leituras ao longo de ${formatWallAge(botAnalysis.rolling.sampleDurationSec)} (retenção de até 15 min)`}
+              >
+                <Clock size={10} /> {formatWallAge(botAnalysis.rolling.sampleDurationSec)}
               </span>
             )}
           </div>
@@ -157,6 +283,47 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
                 </div>
               </div>
 
+              {/* Médias Móveis de Pressão (1m / 5m / 15m) e Consistência */}
+              {botAnalysis.rolling && (
+                <div className="rolling-pressure-section">
+                  <div className="rolling-pills-row">
+                    <span className="rolling-pill pill-instant" title="Pressão instantânea atual do livro">
+                      Inst: <strong>{botAnalysis.intent.bidPressurePct}% C</strong>
+                    </span>
+                    {botAnalysis.rolling.avgPressure1m !== null && (
+                      <span className="rolling-pill" title="Média móvel de pressão nos últimos 60 segundos">
+                        1m: <strong>{botAnalysis.rolling.avgPressure1m}% C</strong>
+                      </span>
+                    )}
+                    {botAnalysis.rolling.avgPressure5m !== null && (
+                      <span className="rolling-pill" title="Média móvel de pressão nos últimos 5 minutos">
+                        5m: <strong>{botAnalysis.rolling.avgPressure5m}% C</strong>
+                      </span>
+                    )}
+                    {botAnalysis.rolling.avgPressure15m !== null && (
+                      <span className="rolling-pill" title="Média móvel de pressão acumulada de até 15 minutos">
+                        15m: <strong>{botAnalysis.rolling.avgPressure15m}% C</strong>
+                      </span>
+                    )}
+                  </div>
+                  {botAnalysis.rolling.consistency === 'divergent' && (
+                    <div className="consistency-badge badge-divergent" title="A pressão momentânea difere da média móvel acumulada">
+                      ⚠️ Divergência: pico momentâneo vs média
+                    </div>
+                  )}
+                  {botAnalysis.rolling.consistency === 'bullish_confirmed' && (
+                    <div className="consistency-badge badge-confirmed-up" title="Pressão compradora confirmada pelo histórico">
+                      ✅ Alta consistente ({botAnalysis.rolling.avgPressure5m ?? botAnalysis.rolling.avgPressure1m}% C)
+                    </div>
+                  )}
+                  {botAnalysis.rolling.consistency === 'bearish_confirmed' && (
+                    <div className="consistency-badge badge-confirmed-down" title="Pressão vendedora confirmada pelo histórico">
+                      🔻 Baixa consistente ({100 - (botAnalysis.rolling.avgPressure5m ?? botAnalysis.rolling.avgPressure1m ?? 50)}% V)
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Tática e Explicação Operacional */}
               <div className="intent-tactic-box">
                 <div className="intent-tactic-header">
@@ -185,10 +352,23 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
               </div>
             )}
 
-            {/* Paredes de Suporte / Resistência do MM */}
+            {/* Paredes de Suporte / Resistência do MM com Persistência */}
             <div className="bot-walls-grid">
               <div className="bot-wall-item bid-wall">
-                <span className="wall-role">Suporte MM (Compra)</span>
+                <div className="wall-header-row">
+                  <span className="wall-role">Suporte MM (Compra)</span>
+                  {botAnalysis.topBidWall?.persistence && (
+                    <span
+                      className={`wall-persistence-tag tag-${botAnalysis.topBidWall.persistence}`}
+                      title={`Tempo de sustentação contínua da parede: ${formatWallAge(botAnalysis.topBidWall.ageSeconds ?? 0)}`}
+                    >
+                      {botAnalysis.topBidWall.persistence === 'rock' && `🏰 Rocha (${formatWallAge(botAnalysis.topBidWall.ageSeconds ?? 0)})`}
+                      {botAnalysis.topBidWall.persistence === 'solid' && `🛡️ Firme (${formatWallAge(botAnalysis.topBidWall.ageSeconds ?? 0)})`}
+                      {botAnalysis.topBidWall.persistence === 'consolidating' && `⏳ Consolidando (${formatWallAge(botAnalysis.topBidWall.ageSeconds ?? 0)})`}
+                      {botAnalysis.topBidWall.persistence === 'recent' && '⏱️ Recente'}
+                    </span>
+                  )}
+                </div>
                 <strong>
                   {botAnalysis.topBidWall ? formatPrice(botAnalysis.topBidWall.price) : 'Nenhuma parede'}
                 </strong>
@@ -199,7 +379,20 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
                 )}
               </div>
               <div className="bot-wall-item ask-wall">
-                <span className="wall-role">Barreira MM (Venda)</span>
+                <div className="wall-header-row">
+                  <span className="wall-role">Barreira MM (Venda)</span>
+                  {botAnalysis.topAskWall?.persistence && (
+                    <span
+                      className={`wall-persistence-tag tag-${botAnalysis.topAskWall.persistence}`}
+                      title={`Tempo de sustentação contínua da barreira: ${formatWallAge(botAnalysis.topAskWall.ageSeconds ?? 0)}`}
+                    >
+                      {botAnalysis.topAskWall.persistence === 'rock' && `🏰 Rocha (${formatWallAge(botAnalysis.topAskWall.ageSeconds ?? 0)})`}
+                      {botAnalysis.topAskWall.persistence === 'solid' && `🛡️ Firme (${formatWallAge(botAnalysis.topAskWall.ageSeconds ?? 0)})`}
+                      {botAnalysis.topAskWall.persistence === 'consolidating' && `⏳ Consolidando (${formatWallAge(botAnalysis.topAskWall.ageSeconds ?? 0)})`}
+                      {botAnalysis.topAskWall.persistence === 'recent' && '⏱️ Recente'}
+                    </span>
+                  )}
+                </div>
                 <strong>
                   {botAnalysis.topAskWall ? formatPrice(botAnalysis.topAskWall.price) : 'Nenhuma parede'}
                 </strong>
@@ -250,7 +443,14 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
               <div className="depth-bar ask-depth-bar" style={{ width: `${depthRatio}%` }} />
               <span className="price-cell negative">
                 {formatPrice(level.price)}
-                {wall && <span className="bot-tag-wall" title={`Parede de Market Maker: ${wall.amount.toFixed(2)} (${wall.ratioToAverage.toFixed(1)}x)`}>🧱 MM</span>}
+                {wall && (
+                  <span
+                    className="bot-tag-wall"
+                    title={`Parede de Market Maker: ${wall.amount.toFixed(2)} (${wall.ratioToAverage.toFixed(1)}x)${wall.ageSeconds && wall.ageSeconds >= 5 ? ` | Ativa há ${formatWallAge(wall.ageSeconds)}` : ''}`}
+                  >
+                    🧱 MM{wall.persistence === 'rock' ? ' 🏰' : wall.persistence === 'solid' ? ' 🛡️' : ''}
+                  </span>
+                )}
               </span>
               <span className="amount-cell text-right">{formatAmount(level.amount)}</span>
               <span className="total-cell text-right">{formatAmount(level.total)}</span>
@@ -262,10 +462,16 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
       {/* Spread & Current Price Banner */}
       <div className="orderbook-spread-banner">
         <div className="spread-current-price">
-          <strong>{formatPrice(currentPrice ?? (depth.bids[0]?.price ?? 0))}</strong>
+          <strong>{formatPrice(currentPrice ?? (activeDepth.bids[0]?.price ?? 0))}</strong>
         </div>
         <div className="spread-info">
-          <span className="muted">Spread {formatPrice(spread)} ({spreadPercent.toFixed(3)}%)</span>
+          {bestBid >= bestAsk && bestAsk > 0 ? (
+            <span className="arbitrage-tag" title="Preço de compra maior ou igual à venda entre corretoras">
+              ⚡ Oportunidade Ágio
+            </span>
+          ) : (
+            <span className="muted">Spread {formatPrice(spread)} ({spreadPercent.toFixed(3)}%)</span>
+          )}
         </div>
       </div>
 
@@ -286,7 +492,14 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
               <div className="depth-bar bid-depth-bar" style={{ width: `${depthRatio}%` }} />
               <span className="price-cell positive">
                 {formatPrice(level.price)}
-                {wall && <span className="bot-tag-wall" title="Parede de Market Maker">🧱 MM</span>}
+                {wall && (
+                  <span
+                    className="bot-tag-wall"
+                    title={`Parede de Market Maker: ${wall.amount.toFixed(2)} (${wall.ratioToAverage.toFixed(1)}x)${wall.ageSeconds && wall.ageSeconds >= 5 ? ` | Ativa há ${formatWallAge(wall.ageSeconds)}` : ''}`}
+                  >
+                    🧱 MM{wall.persistence === 'rock' ? ' 🏰' : wall.persistence === 'solid' ? ' 🛡️' : ''}
+                  </span>
+                )}
               </span>
               <span className="amount-cell text-right">{formatAmount(level.amount)}</span>
               <span className="total-cell text-right">{formatAmount(level.total)}</span>
@@ -299,6 +512,8 @@ export function OrderBookView({ depth, currentPrice, onSelectPrice, maxLevels = 
         <span>Vol. Compra: <strong>{formatAmount(totalBidQty)}</strong></span>
         <span>Vol. Venda: <strong>{formatAmount(totalAskQty)}</strong></span>
       </div>
+      </>
+      )}
     </div>
   );
 }

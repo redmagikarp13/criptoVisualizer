@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeOrderBookBots } from './botDetector';
+import {
+  analyzeOrderBookBots,
+  computeRollingMetrics,
+  formatWallAge,
+  updateTrackedWalls,
+  type BotWall,
+  type DepthSample,
+  type TrackedWall,
+} from './botDetector';
 import type { OrderBook } from '../../lib/types';
 
 describe('botDetector', () => {
@@ -166,6 +174,81 @@ describe('botDetector', () => {
     expect(analysis.activeWalls[0].side).toBe('bid');
     expect(analysis.topBidWall?.price).toBe(64995.0);
     expect(analysis.topAskWall).toBeNull();
+  });
+
+  it('formata idade da parede com precisão legível', () => {
+    expect(formatWallAge(15)).toBe('15s');
+    expect(formatWallAge(90)).toBe('1m 30s');
+    expect(formatWallAge(300)).toBe('5m');
+    expect(formatWallAge(900)).toBe('15m');
+  });
+
+  it('rastreia a persistência de paredes ao longo do tempo (recent -> solid -> rock)', () => {
+    const tracked = new Map<string, TrackedWall>();
+    const initialWall: BotWall = {
+      side: 'bid',
+      price: 64000,
+      amount: 10,
+      ratioToAverage: 3.5,
+      distancePercent: -0.5,
+      isHeavy: true,
+    };
+
+    const t0 = 1000000;
+    // 1º instante: parede acabou de ser detectada
+    const res0 = updateTrackedWalls([initialWall], tracked, t0);
+    expect(res0[0].ageSeconds).toBe(0);
+    expect(res0[0].persistence).toBe('recent');
+
+    // 2º instante: 45 segundos depois
+    const res1 = updateTrackedWalls([initialWall], tracked, t0 + 45000);
+    expect(res1[0].ageSeconds).toBe(45);
+    expect(res1[0].persistence).toBe('consolidating');
+
+    // 3º instante: 4 minutos (240s) depois
+    const res2 = updateTrackedWalls([initialWall], tracked, t0 + 240000);
+    expect(res2[0].ageSeconds).toBe(240);
+    expect(res2[0].persistence).toBe('solid');
+
+    // 4º instante: 12 minutos (720s) depois
+    const res3 = updateTrackedWalls([initialWall], tracked, t0 + 720000);
+    expect(res3[0].ageSeconds).toBe(720);
+    expect(res3[0].persistence).toBe('rock');
+
+    // 5º instante: parede sumiu por mais de 4s -> descartada
+    updateTrackedWalls([], tracked, t0 + 730000);
+    expect(tracked.size).toBe(0);
+  });
+
+  it('calcula médias móveis de pressão amostradas (1m, 5m, 15m) e detecta divergência ou confirmação', () => {
+    const now = 2000000;
+    // Amostras a cada 2s cobrindo 15 minutos (450 amostras) com pressão compradora forte (70%)
+    const samples: DepthSample[] = [];
+    for (let i = 0; i < 450; i++) {
+      samples.push({
+        time: now - (450 - i) * 2000,
+        score: 40,
+        bidPressurePct: 70,
+      });
+    }
+
+    // Caso 1: Alta confirmada (instantâneo 75% e médias 70%)
+    const bullishMetrics = computeRollingMetrics(samples, now, 75);
+    expect(bullishMetrics.avgPressure1m).toBe(70);
+    expect(bullishMetrics.avgPressure5m).toBe(70);
+    expect(bullishMetrics.avgPressure15m).toBe(70);
+    expect(bullishMetrics.consistency).toBe('bullish_confirmed');
+    expect(bullishMetrics.consistencyHeadline).toContain('Alta consistente');
+
+    // Caso 2: Divergência (instantâneo caiu para 30% venda, mas médias continuam 70% compra)
+    const divergentMetrics = computeRollingMetrics(samples, now, 30);
+    expect(divergentMetrics.consistency).toBe('divergent');
+    expect(divergentMetrics.consistencyHeadline).toContain('Divergência');
+
+    // Caso 3: Amostras insuficientes no início
+    const emptyMetrics = computeRollingMetrics([], now, 50);
+    expect(emptyMetrics.avgPressure1m).toBeNull();
+    expect(emptyMetrics.consistency).toBe('neutral');
   });
 });
 

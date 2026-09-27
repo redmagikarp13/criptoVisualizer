@@ -7,6 +7,10 @@ use std::{collections::HashSet, io::Write, path::Path};
 pub struct IndicatorSettings {
     pub sma: bool, pub ema: bool, pub rsi: bool, pub macd: bool, pub bands: bool,
     pub sma_period: u16, pub ema_fast_period: u16, pub ema_slow_period: u16,
+    #[serde(default)] pub volume_ma: bool,
+    #[serde(default)] pub vwap: bool,
+    #[serde(default)] pub supertrend: bool,
+    #[serde(default)] pub stochastic: bool,
 }
 fn default_alert_mode() -> String { "recurring".to_string() }
 
@@ -43,7 +47,11 @@ impl Default for Preferences {
             symbol: "BTCUSDT".into(),
             interval: "1h".into(),
             theme: "system".into(),
-            indicators: IndicatorSettings { sma: true, ema: true, rsi: true, macd: false, bands: false, sma_period: 20, ema_fast_period: 20, ema_slow_period: 50 },
+            indicators: IndicatorSettings {
+                sma: true, ema: true, rsi: true, macd: false, bands: false,
+                sma_period: 20, ema_fast_period: 20, ema_slow_period: 50,
+                volume_ma: true, vwap: false, supertrend: false, stochastic: false,
+            },
             agent: "qoder".into(),
             antigravity_enabled: false,
             qoder_path: String::new(),

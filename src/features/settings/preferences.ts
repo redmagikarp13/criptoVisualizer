@@ -15,6 +15,10 @@ export const alertSchema = z.object({
 export const indicatorSettingsSchema = z.object({
   sma: z.boolean(), ema: z.boolean(), rsi: z.boolean(), macd: z.boolean(), bands: z.boolean(),
   smaPeriod: period, emaFastPeriod: period, emaSlowPeriod: period,
+  volumeMa: z.boolean().default(true),
+  vwap: z.boolean().default(false),
+  supertrend: z.boolean().default(false),
+  stochastic: z.boolean().default(false),
 });
 export const preferencesSchema = z.object({
   version: z.literal(1),
@@ -40,7 +44,11 @@ export const defaultPreferences: Preferences = {
   version: 1,
   favorites: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
   symbol: 'BTCUSDT', interval: '1h', theme: 'system',
-  indicators: { sma: true, ema: true, rsi: true, macd: false, bands: false, smaPeriod: 20, emaFastPeriod: 20, emaSlowPeriod: 50 },
+  indicators: {
+    sma: true, ema: true, rsi: true, macd: false, bands: false,
+    smaPeriod: 20, emaFastPeriod: 20, emaSlowPeriod: 50,
+    volumeMa: true, vwap: false, supertrend: false, stochastic: false,
+  },
   agent: 'qoder', antigravityEnabled: false,
   qoderPath: '', antigravityPath: '', qoderModel: '', antigravityModel: '',
   alerts: [],

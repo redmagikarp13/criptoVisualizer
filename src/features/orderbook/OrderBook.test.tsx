@@ -55,5 +55,48 @@ describe('OrderBookView', () => {
     const mmBadges = screen.getAllByText(/🧱 MM/);
     expect(mmBadges).toHaveLength(1);
   });
+
+  it('exibe abas de exchanges e suporta visualização individual e consolidada', () => {
+    const binanceBook: OrderBook = {
+      symbol: 'BTCUSDT',
+      time: 1700000000000,
+      exchange: 'binance',
+      bids: [{ price: 95000, amount: 2.0 }],
+      asks: [{ price: 95100, amount: 1.0 }],
+    };
+    const bybitBook: OrderBook = {
+      symbol: 'BTCUSDT',
+      time: 1700000000010,
+      exchange: 'bybit',
+      bids: [{ price: 95000, amount: 1.5 }],
+      asks: [{ price: 95100, amount: 2.0 }],
+    };
+
+    const { rerender } = render(
+      <OrderBookView
+        depth={binanceBook}
+        depths={{ binance: binanceBook, bybit: bybitBook }}
+        selectedExchange="binance"
+      />
+    );
+
+    expect(screen.getByRole('tab', { name: /Binance/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /OKX/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Bybit/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Consolidado/i })).toBeInTheDocument();
+
+    // Rerender with 'merged'
+    rerender(
+      <OrderBookView
+        depth={binanceBook}
+        depths={{ binance: binanceBook, bybit: bybitBook }}
+        selectedExchange="merged"
+      />
+    );
+
+    // Sum of amounts: 2.0 + 1.5 = 3.5
+    expect(screen.getAllByText(/3.5/)[0]).toBeInTheDocument();
+    expect(screen.getByText(/Multicorretoras/)).toBeInTheDocument();
+  });
 });
 

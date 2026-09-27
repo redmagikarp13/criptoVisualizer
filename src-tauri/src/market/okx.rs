@@ -17,6 +17,41 @@ pub fn parse_ticker(value: &Value, symbol: &str, received: u64) -> Option<Quote>
     Some(Quote { symbol: symbol.into(), price, change_24h: (price / open - 1.0) * 100.0,
         time: row["ts"].as_str()?.parse().ok()?, received_at: received, exchange: "okx".into() })
 }
+
+pub fn parse_depth(value: &Value, symbol: &str, received: u64) -> Option<OrderBook> {
+    let (base, quote) = split_symbol(symbol)?;
+    let expected = format!("{base}-{quote}");
+    let channel = value["arg"]["channel"].as_str()?;
+    if channel != "books5" && channel != "books" { return None; }
+    if value["arg"]["instId"].as_str()? != expected { return None; }
+    let row = value["data"].as_array()?.first()?;
+    let parse_levels = |val: &Value| -> Option<Vec<DepthLevel>> {
+        let list = val.as_array()?;
+        let mut levels = Vec::with_capacity(list.len());
+        for item in list {
+            let arr = item.as_array()?;
+            if arr.len() >= 2 {
+                let price = number(&arr[0])?;
+                let amount = number(&arr[1])?;
+                if price > 0.0 && amount >= 0.0 {
+                    levels.push(DepthLevel { price, amount });
+                }
+            }
+        }
+        Some(levels)
+    };
+    let bids = parse_levels(&row["bids"])?;
+    let asks = parse_levels(&row["asks"])?;
+    let time = row["ts"].as_str().and_then(|s| s.parse().ok()).unwrap_or(received);
+    Some(OrderBook {
+        symbol: symbol.into(),
+        bids,
+        asks,
+        time,
+        exchange: Some("okx".into()),
+    })
+}
+
 async fn session(client: &reqwest::Client, symbol: &str, sink: &Sink) -> Result<()> {
     let (base, quote) = split_symbol(symbol).ok_or_else(|| AppError::new("pair_unavailable", "Par inválido para comparação."))?;
     let inst = format!("{base}-{quote}");
@@ -26,7 +61,13 @@ async fn session(client: &reqwest::Client, symbol: &str, sink: &Sink) -> Result<
     let (mut socket, _) = tokio::time::timeout(Duration::from_secs(15), tokio_tungstenite::connect_async("wss://ws.okx.com:8443/ws/v5/public")).await
         .map_err(|_| AppError::new("network", "Tempo esgotado ao conectar à OKX."))?
         .map_err(|_| AppError::new("network", "Comparação indisponível: conexão OKX falhou."))?;
-    socket.send(WsMessage::Text(json!({"op":"subscribe","args":[{"channel":"tickers","instId":inst}]}).to_string().into())).await
+    socket.send(WsMessage::Text(json!({
+        "op": "subscribe",
+        "args": [
+            { "channel": "tickers", "instId": inst },
+            { "channel": "books5", "instId": inst }
+        ]
+    }).to_string().into())).await
         .map_err(|_| AppError::new("network", "Assinatura OKX interrompida."))?;
     let mut heartbeat = tokio::time::interval(Duration::from_secs(15));
     let mut last_message = Instant::now();
@@ -46,6 +87,9 @@ async fn session(client: &reqwest::Client, symbol: &str, sink: &Sink) -> Result<
                         if let Some(quote) = parse_ticker(&value, symbol, now_ms()) {
                             status(sink, "okx", "connected", "OKX Spot conectada");
                             sink(Event::Quote { quote });
+                        }
+                        if let Some(depth) = parse_depth(&value, symbol, now_ms()) {
+                            sink(Event::Depth { depth });
                         }
                     }
                     Some(Ok(WsMessage::Ping(data))) => { socket.send(WsMessage::Pong(data)).await.map_err(|_| AppError::new("network", "Conexão OKX interrompida."))?; }

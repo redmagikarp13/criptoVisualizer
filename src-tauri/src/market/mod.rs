@@ -9,22 +9,27 @@ use crate::{
     error::{AppError, Result},
     preferences::{is_b3_symbol, is_crypto_symbol, valid_interval, valid_symbol},
 };
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use types::{MarketRequest, Sink};
 
 #[derive(Default)]
-pub struct MarketHub { current: Mutex<Option<(String, CancellationToken)>> }
+pub struct MarketHub {
+    streams: Mutex<HashMap<String, CancellationToken>>,
+}
 impl MarketHub {
     pub fn start(&self, client: reqwest::Client, request: MarketRequest, sink: Sink) -> Result<()> {
         if request.id.len() > 100 || !valid_symbol(&request.symbol) || !valid_interval(&request.interval)
             || request.favorites.len() > 20 || request.favorites.iter().any(|s| !valid_symbol(s)) {
             return Err(AppError::new("invalid_market", "Seleção de mercado inválida."));
         }
-        let mut current = self.current.lock().map_err(|_| AppError::new("internal", "Falha ao abrir mercado."))?;
-        if let Some((_, token)) = current.take() { token.cancel(); }
+        let mut streams = self.streams.lock().map_err(|_| AppError::new("internal", "Falha ao abrir mercado."))?;
+        if let Some(old_token) = streams.remove(&request.id) {
+            old_token.cancel();
+        }
         let token = CancellationToken::new();
-        *current = Some((request.id.clone(), token.clone()));
+        streams.insert(request.id.clone(), token.clone());
 
         if is_b3_symbol(&request.symbol) {
             tauri::async_runtime::spawn(run_b3(client, request, sink, token));
@@ -38,9 +43,18 @@ impl MarketHub {
         Ok(())
     }
     pub fn stop(&self, id: Option<&str>) {
-        if let Ok(mut current) = self.current.lock() {
-            if current.as_ref().is_some_and(|(active, _)| id.is_none() || id == Some(active.as_str())) {
-                if let Some((_, token)) = current.take() { token.cancel(); }
+        if let Ok(mut streams) = self.streams.lock() {
+            match id {
+                Some(target_id) => {
+                    if let Some(token) = streams.remove(target_id) {
+                        token.cancel();
+                    }
+                }
+                None => {
+                    for (_, token) in streams.drain() {
+                        token.cancel();
+                    }
+                }
             }
         }
     }

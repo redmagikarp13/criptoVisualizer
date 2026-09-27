@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MarketChart } from '../features/chart/MarketChart';
+import { MultiChartGrid } from '../features/multichart/MultiChartGrid';
 import { AnalysisPanel } from '../features/analysis/AnalysisPanel';
-import { Activity, PanelRightClose, PanelRightOpen, Search, Settings, Star, RefreshCw, Bell, BellRing, X } from 'lucide-react';
+import { Activity, PanelRightClose, PanelRightOpen, Search, Settings, Star, RefreshCw, Bell, BellRing, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { desktop } from '../lib/desktop';
 import { errorMessage, intervals, type BrStockSearchResult, type Candle, type CliStatus } from '../lib/types';
 import { defaultPreferences, type Preferences } from '../features/settings/preferences';
@@ -46,6 +46,123 @@ export function App() {
   const [systemDark, setSystemDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false);
   const saveQueue = useRef(Promise.resolve());
 
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('criptovisualizer:sidebar-width');
+      const num = saved ? Number.parseInt(saved, 10) : 320;
+      return Number.isFinite(num) && num >= 260 && num <= 850 ? num : 320;
+    } catch {
+      return 320;
+    }
+  });
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const latestSidebarWidth = useRef(sidebarWidth);
+  latestSidebarWidth.current = sidebarWidth;
+
+  const handleStartResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingSidebar(true);
+    const startX = e.clientX;
+    const startWidth = latestSidebarWidth.current;
+    let animId: number | null = null;
+    let currentW = startWidth;
+
+    const onMouseMove = (moveEv: MouseEvent) => {
+      const delta = startX - moveEv.clientX;
+      const maxWidth = Math.max(320, Math.floor(window.innerWidth - 420));
+      currentW = Math.max(260, Math.min(startWidth + delta, maxWidth));
+      if (animId) cancelAnimationFrame(animId);
+      animId = requestAnimationFrame(() => {
+        setSidebarWidth(currentW);
+      });
+    };
+
+    const onMouseUp = () => {
+      if (animId) cancelAnimationFrame(animId);
+      setIsResizingSidebar(false);
+      try {
+        localStorage.setItem('criptovisualizer:sidebar-width', currentW.toString());
+      } catch {
+        // Ignora erro de localStorage indisponível
+      }
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleResetResize = () => {
+    setSidebarWidth(320);
+    try {
+      localStorage.setItem('criptovisualizer:sidebar-width', '320');
+    } catch {
+      // Ignora erro de localStorage indisponível
+    }
+  };
+
+  const [chartHeight, setChartHeight] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('criptovisualizer:chart-height');
+      const num = saved ? Number.parseInt(saved, 10) : null;
+      return num && Number.isFinite(num) && num >= 220 && num <= 1600 ? num : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isResizingChart, setIsResizingChart] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(true);
+  const chartRegionRef = useRef<HTMLElement | null>(null);
+
+  const handleStartChartResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingChart(true);
+    const startY = e.clientY;
+    const initialHeight = chartRegionRef.current
+      ? chartRegionRef.current.getBoundingClientRect().height
+      : (chartHeight ?? 400);
+
+    let animId: number | null = null;
+    let currentH = initialHeight;
+
+    const onMouseMove = (moveEv: MouseEvent) => {
+      const deltaY = moveEv.clientY - startY;
+      const minHeight = 220;
+      const maxHeight = Math.max(minHeight + 100, window.innerHeight + 600);
+      currentH = Math.max(minHeight, Math.min(initialHeight + deltaY, maxHeight));
+
+      if (animId) cancelAnimationFrame(animId);
+      animId = requestAnimationFrame(() => {
+        setChartHeight(currentH);
+      });
+    };
+
+    const onMouseUp = () => {
+      if (animId) cancelAnimationFrame(animId);
+      setIsResizingChart(false);
+      try {
+        localStorage.setItem('criptovisualizer:chart-height', currentH.toString());
+      } catch {
+        // Ignora erro de localStorage indisponível
+      }
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleResetChartResize = () => {
+    setChartHeight(null);
+    try {
+      localStorage.removeItem('criptovisualizer:chart-height');
+    } catch {
+      // Ignora erro de localStorage indisponível
+    }
+  };
+
   const isCurrentB3 = isB3Symbol(preferences.symbol);
 
   // Monitora cotações B3 para ativos cadastrados, favoritos e o ativo atual
@@ -67,6 +184,10 @@ export function App() {
   );
 
   const market = useMarket(preferences.symbol, preferences.interval, preferences.favorites, ready && desktop.available);
+
+  const allAvailableSymbols = useMemo(() => {
+    return Array.from(new Set([...preferences.favorites, ...(preferences.brStocks ?? []), 'BTCUSDT', 'ETHUSDT', 'SOLUSDT']));
+  }, [preferences.favorites, preferences.brStocks]);
 
   // Candles para ações B3 (histórico diário via brapi)
   const [stockCandles, setStockCandles] = useState<Candle[]>([]);
@@ -230,7 +351,10 @@ export function App() {
   const labels = { connecting: 'Conectando', connected: 'Ao vivo', reconnecting: 'Reconectando', error: 'Sem conexão' };
 
   return (
-    <div className={`workspace ${analysisOpen ? '' : 'analysis-collapsed'}`}>
+    <div
+      className={`workspace ${analysisOpen ? '' : 'analysis-collapsed'} ${isResizingSidebar ? 'is-resizing' : ''} ${isResizingChart ? 'is-resizing-v' : ''}`}
+      style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+    >
       <header className="app-header">
         <a className="brand" href="#market">
           <Activity size={22} aria-hidden="true" />
@@ -541,27 +665,57 @@ export function App() {
         </div>
 
         <div className="indicator-toolbar" role="group" aria-label="Indicadores">
-          {(['sma', 'ema', 'bands', 'rsi', 'macd'] as const).map((name, index) => (
+          {(
+            [
+              'sma',
+              'ema',
+              'bands',
+              'rsi',
+              'macd',
+              'volumeMa',
+              'vwap',
+              'supertrend',
+              'stochastic',
+            ] as const
+          ).map((name, index) => (
             <label className="indicator-toggle" key={name}>
               <input
                 type="checkbox"
-                checked={preferences.indicators[name]}
+                checked={!!preferences.indicators[name]}
                 onChange={e => update({ indicators: { ...preferences.indicators, [name]: e.target.checked } })}
               />
-              {[`SMA ${preferences.indicators.smaPeriod}`, `EMA ${preferences.indicators.emaFastPeriod}/${preferences.indicators.emaSlowPeriod}`, 'Bollinger', 'RSI 14', 'MACD'][index]}
+              {[
+                `SMA ${preferences.indicators.smaPeriod}`,
+                `EMA ${preferences.indicators.emaFastPeriod}/${preferences.indicators.emaSlowPeriod}`,
+                'Bollinger',
+                'RSI 14',
+                'MACD',
+                'Vol MA 20',
+                'VWAP',
+                'SuperTrend',
+                'Estocástico',
+              ][index]}
             </label>
           ))}
         </div>
 
         {/* Região do Gráfico */}
-        <section className="chart-region" aria-label={`Gráfico de candles ${pair(preferences.symbol)}`}>
+        <section
+          ref={chartRegionRef}
+          className="chart-region"
+          style={chartHeight ? { height: `${chartHeight}px`, flex: 'none' } : undefined}
+          aria-label={`Grade de gráficos ${pair(preferences.symbol)}`}
+        >
           {activeCandles.length ? (
-            <MarketChart
-              key={`${preferences.symbol}-${preferences.interval}`}
-              candles={activeCandles}
-              indicators={indicators.result}
+            <MultiChartGrid
+              primarySymbol={preferences.symbol}
+              primaryInterval={preferences.interval}
+              primaryCandles={activeCandles}
+              primaryIndicators={indicators.result}
               settings={preferences.indicators}
               dark={dark}
+              availableSymbols={allAvailableSymbols}
+              onActiveSymbolChange={(sym, int) => update({ symbol: sym, interval: int })}
             />
           ) : (
             <div className="chart-empty">
@@ -582,80 +736,120 @@ export function App() {
           <span>{activeCandles.length} candles</span>
         </div>
 
+        {/* Alça de Redimensionamento Vertical do Gráfico */}
+        <div
+          className={`chart-vertical-resizer ${isResizingChart ? 'resizing' : ''}`}
+          onMouseDown={handleStartChartResize}
+          onDoubleClick={handleResetChartResize}
+          role="separator"
+          aria-orientation="horizontal"
+          title="Arraste para baixo para aumentar o gráfico e descer a tabela (duplo clique para restaurar altura)"
+        />
+
         {/* Área inferior: Resumo B3 ou Comparação de Cripto */}
         {isCurrentB3 ? (
           <section className="stock-summary-section" aria-label="Resumo do ativo B3">
             <div className="stock-summary-heading">
-              <h2>Resumo do Ativo · B3</h2>
-              <span className="muted">brapi.dev · Cotações com até 15 min de atraso</span>
+              <div className="stock-summary-title-wrap">
+                <h2>Resumo do Ativo · B3</h2>
+                <span className="muted">brapi.dev · Cotações com até 15 min de atraso</span>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setComparisonOpen(v => !v)}
+                aria-expanded={comparisonOpen}
+                title={comparisonOpen ? 'Recolher resumo da ação' : 'Expandir resumo da ação'}
+              >
+                {comparisonOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
             </div>
-            <div className="stock-metrics-grid">
-              <div className="stock-metric-card">
-                <span className="metric-label">Cotação Atual</span>
-                <strong>{stockQuote ? fmtPrice(stockQuote.price) : '—'}</strong>
-                <span className={stockQuote ? (stockQuote.change >= 0 ? 'positive' : 'negative') : 'muted'}>
-                  {stockQuote ? `${stockQuote.change >= 0 ? '+' : ''}${stockQuote.change.toFixed(2)}% (${stockQuote.changeAbs >= 0 ? '+' : ''}R$ ${stockQuote.changeAbs.toFixed(2)})` : '—'}
-                </span>
-              </div>
-              <div className="stock-metric-card">
-                <span className="metric-label">Fechamento Anterior</span>
-                <strong>{stockQuote?.previousClose ? fmtPrice(stockQuote.previousClose) : '—'}</strong>
-                <span className="muted">Último pregão</span>
-              </div>
-              <div className="stock-metric-card">
-                <span className="metric-label">Volume do Pregão</span>
-                <strong>{stockQuote?.volume ? fmtVol(stockQuote.volume) : '—'}</strong>
-                <span className="muted">Ações negociadas</span>
-              </div>
-              <div className="stock-metric-card">
-                <span className="metric-label">Valor de Mercado</span>
-                <strong>{stockQuote?.marketCap ? `R$ ${fmtVol(stockQuote.marketCap)}` : '—'}</strong>
-                <span className="muted">Market Cap</span>
-              </div>
-            </div>
-            <p className="disclaimer">
-              Cotações públicas da B3 com até 15 minutos de atraso (brapi.dev gratuito). O gráfico reflete o pregão diário dos últimos 3 meses.
-            </p>
+            {comparisonOpen && (
+              <>
+                <div className="stock-metrics-grid">
+                  <div className="stock-metric-card">
+                    <span className="metric-label">Cotação Atual</span>
+                    <strong>{stockQuote ? fmtPrice(stockQuote.price) : '—'}</strong>
+                    <span className={stockQuote ? (stockQuote.change >= 0 ? 'positive' : 'negative') : 'muted'}>
+                      {stockQuote ? `${stockQuote.change >= 0 ? '+' : ''}${stockQuote.change.toFixed(2)}% (${stockQuote.changeAbs >= 0 ? '+' : ''}R$ ${stockQuote.changeAbs.toFixed(2)})` : '—'}
+                    </span>
+                  </div>
+                  <div className="stock-metric-card">
+                    <span className="metric-label">Fechamento Anterior</span>
+                    <strong>{stockQuote?.previousClose ? fmtPrice(stockQuote.previousClose) : '—'}</strong>
+                    <span className="muted">Último pregão</span>
+                  </div>
+                  <div className="stock-metric-card">
+                    <span className="metric-label">Volume do Pregão</span>
+                    <strong>{stockQuote?.volume ? fmtVol(stockQuote.volume) : '—'}</strong>
+                    <span className="muted">Ações negociadas</span>
+                  </div>
+                  <div className="stock-metric-card">
+                    <span className="metric-label">Valor de Mercado</span>
+                    <strong>{stockQuote?.marketCap ? `R$ ${fmtVol(stockQuote.marketCap)}` : '—'}</strong>
+                    <span className="muted">Market Cap</span>
+                  </div>
+                </div>
+                <p className="disclaimer">
+                  Cotações públicas da B3 com até 15 minutos de atraso (brapi.dev gratuito). O gráfico reflete o pregão diário dos últimos 3 meses.
+                </p>
+              </>
+            )}
           </section>
         ) : (
           <section className="comparison-section" aria-label="Comparação entre exchanges">
             <div className="comparison-heading">
-              <h2>Comparação entre exchanges</h2>
-              <span className="muted">Últimos negócios · {splitSymbol(preferences.symbol)?.quote ?? 'Spot'}</span>
-            </div>
-            <div className="comparison-grid" role="table">
-              <div className="comparison-row comparison-head" role="row">
-                <span>Fonte</span>
-                <span>Preço</span>
-                <span>Horário</span>
-                <span>vs Binance</span>
+              <div className="comparison-title-wrap">
+                <h2>Comparação entre exchanges</h2>
+                <span className="muted">Últimos negócios · {splitSymbol(preferences.symbol)?.quote ?? 'Spot'}</span>
               </div>
-              <div className="comparison-row" role="row">
-                <span>Binance</span>
-                <strong>{price(quote?.price)}</strong>
-                <time>{clock(quote?.time)}</time>
-                <span className="muted">referência</span>
-              </div>
-              {rows.map(row => (
-                <div className="comparison-row" role="row" key={row.exchange}>
-                  <span>{exchangeNames[row.exchange] ?? row.exchange}</span>
-                  <strong>{price(row.price)}</strong>
-                  <time>{clock(row.time)}</time>
-                  <strong className={row.difference === null ? 'unavailable' : row.difference >= 0 ? 'positive' : 'negative'}>
-                    {row.difference === null ? 'indisponível' : `${row.difference >= 0 ? '+' : ''}${row.difference.toFixed(3)}%`}
-                  </strong>
-                </div>
-              ))}
-              {rows.length === 0 && (
-                <div className="comparison-row" role="row">
-                  <span className="muted">{desktop.available ? 'Aguardando cotações das exchanges de comparação…' : 'Disponível no aplicativo desktop'}</span>
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              )}
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setComparisonOpen(v => !v)}
+                aria-expanded={comparisonOpen}
+                title={comparisonOpen ? 'Recolher tabela comparativa' : 'Expandir tabela comparativa'}
+              >
+                {comparisonOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
             </div>
-            <p className="disclaimer">Não são ofertas executáveis. A diferença não inclui taxas, liquidez ou transferências.</p>
+            {comparisonOpen && (
+              <>
+                <div className="comparison-grid" role="table">
+                  <div className="comparison-row comparison-head" role="row">
+                    <span>Fonte</span>
+                    <span>Preço</span>
+                    <span>Horário</span>
+                    <span>vs Binance</span>
+                  </div>
+                  <div className="comparison-row" role="row">
+                    <span>Binance</span>
+                    <strong>{price(quote?.price)}</strong>
+                    <time>{clock(quote?.time)}</time>
+                    <span className="muted">referência</span>
+                  </div>
+                  {rows.map(row => (
+                    <div className="comparison-row" role="row" key={row.exchange}>
+                      <span>{exchangeNames[row.exchange] ?? row.exchange}</span>
+                      <strong>{price(row.price)}</strong>
+                      <time>{clock(row.time)}</time>
+                      <strong className={row.difference === null ? 'unavailable' : row.difference >= 0 ? 'positive' : 'negative'}>
+                        {row.difference === null ? 'indisponível' : `${row.difference >= 0 ? '+' : ''}${row.difference.toFixed(3)}%`}
+                      </strong>
+                    </div>
+                  ))}
+                  {rows.length === 0 && (
+                    <div className="comparison-row" role="row">
+                      <span className="muted">{desktop.available ? 'Aguardando cotações das exchanges de comparação…' : 'Disponível no aplicativo desktop'}</span>
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  )}
+                </div>
+                <p className="disclaimer">Não são ofertas executáveis. A diferença não inclui taxas, liquidez ou transferências.</p>
+              </>
+            )}
           </section>
         )}
       </main>
@@ -666,12 +860,16 @@ export function App() {
         interval={preferences.interval}
         candles={activeCandles}
         depth={isCurrentB3 ? null : market.depth}
+        depths={isCurrentB3 ? undefined : market.depths}
         currentPrice={isCurrentB3 ? stockQuote?.price : quote?.price}
         onSelectPrice={() => setAlertsOpen(true)}
         preferences={preferences}
         statuses={statuses}
         comparison={isCurrentB3 ? null : comparison}
         hidden={!analysisOpen}
+        onStartResize={handleStartResize}
+        onResetResize={handleResetResize}
+        isResizing={isResizingSidebar}
       />
 
       {settingsOpen && (

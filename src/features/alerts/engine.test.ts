@@ -47,7 +47,7 @@ describe('motor de alarmes', () => {
   });
   it('dispara para "cross" quando cruza em qualquer direção', () => {
     const cross = toRuntime({ id: 'c', symbol: 'BTCUSDT', direction: 'cross', price: 100, enabled: true, mode: 'recurring' });
-    let state = evaluate([cross], { BTCUSDT: quote(95) }, 1500).alerts;
+    const state = evaluate([cross], { BTCUSDT: quote(95) }, 1500).alerts;
     expect(state[0].state).toBe('armed');
     expect(state[0].lastSide).toBe('below');
 
@@ -68,7 +68,7 @@ describe('motor de alarmes', () => {
   });
   it('desativa alarme de disparo único (mode: once)', () => {
     const once = toRuntime({ id: 'o', symbol: 'BTCUSDT', direction: 'above', price: 100, enabled: true, mode: 'once' });
-    let state = evaluate([once], { BTCUSDT: quote(90) }, 1500).alerts;
+    const state = evaluate([once], { BTCUSDT: quote(90) }, 1500).alerts;
     const fire = evaluate(state, { BTCUSDT: quote(105) }, 1600);
     expect(fire.fired).toHaveLength(1);
     expect(fire.alerts[0].enabled).toBe(false);

@@ -22,7 +22,9 @@ export const desktop = {
   },
   async subscribeMarket(request: MarketRequest, receive: (event: MarketEvent) => void, signal: AbortSignal): Promise<() => void> {
     if (!available || signal.aborted) return () => {};
-    const unlisten = await listen<MarketEvent>('market-event', ({ payload }) => { if (!signal.aborted) receive(payload); });
+    const unlisten = await listen<MarketEvent>('market-event', ({ payload }) => {
+      if (!signal.aborted && payload.id === request.id) receive(payload);
+    });
     if (signal.aborted) { unlisten(); return () => {}; }
     try { await invoke('start_market', { request }); }
     catch (error) { unlisten(); throw error; }

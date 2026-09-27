@@ -37,6 +37,8 @@ pub struct OrderBook {
     pub bids: Vec<DepthLevel>,
     pub asks: Vec<DepthLevel>,
     pub time: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exchange: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

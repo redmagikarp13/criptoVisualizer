@@ -30,14 +30,29 @@ it('mantém somente os mil candles mais recentes em ordem', () => {
   expect(result.candles[0].time).toBe(6000);
 });
 
-it('atualiza o livro de ofertas quando recebe evento depth', () => {
+it('atualiza o livro de ofertas quando recebe evento depth por exchange', () => {
   const state = initialMarketState('a');
-  const mockDepth = {
+  const binanceDepth = {
     symbol: 'ENAUSDC',
     time: 12345,
+    exchange: 'binance' as const,
     bids: [{ price: 0.265, amount: 100 }],
     asks: [{ price: 0.266, amount: 200 }],
   };
-  const result = applyMarketEvent(state, { id: 'a', kind: 'depth', depth: mockDepth });
-  expect(result.depth).toEqual(mockDepth);
+  const okxDepth = {
+    symbol: 'ENAUSDC',
+    time: 12346,
+    exchange: 'okx' as const,
+    bids: [{ price: 0.264, amount: 150 }],
+    asks: [{ price: 0.267, amount: 250 }],
+  };
+
+  const state1 = applyMarketEvent(state, { id: 'a', kind: 'depth', depth: binanceDepth });
+  expect(state1.depth).toEqual(binanceDepth);
+  expect(state1.depths.binance).toEqual(binanceDepth);
+
+  const state2 = applyMarketEvent(state1, { id: 'a', kind: 'depth', depth: okxDepth });
+  expect(state2.depth).toEqual(binanceDepth); // Preserves binance as primary depth
+  expect(state2.depths.binance).toEqual(binanceDepth);
+  expect(state2.depths.okx).toEqual(okxDepth);
 });

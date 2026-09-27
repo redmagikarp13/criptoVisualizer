@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { errorMessage, type Candle, type CliStatus, type Interval, type OrderBook as OrderBookType } from '../../lib/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { errorMessage, type Candle, type CliStatus, type Exchange, type Interval, type OrderBook as OrderBookType } from '../../lib/types';
 import { desktop } from '../../lib/desktop';
 import { analysisSchema, buildSnapshot, type AnalysisRecord, type OrderBookSnapshot } from './snapshot';
 import type { Preferences } from '../settings/preferences';
@@ -14,12 +14,16 @@ export interface AnalysisPanelProps {
   interval: Interval;
   candles: Candle[];
   depth?: OrderBookType | null;
+  depths?: Partial<Record<Exchange, OrderBookType>>;
   currentPrice?: number;
   onSelectPrice?: (price: number) => void;
   preferences: Preferences;
   statuses: CliStatus[];
   comparison: Comparison | null;
   hidden: boolean;
+  onStartResize?: (e: React.MouseEvent) => void;
+  onResetResize?: () => void;
+  isResizing?: boolean;
 }
 
 export function AnalysisPanel({
@@ -27,14 +31,42 @@ export function AnalysisPanel({
   interval,
   candles,
   depth,
+  depths,
   currentPrice,
   onSelectPrice,
   preferences,
   statuses,
   comparison,
   hidden,
+  onStartResize,
+  onResetResize,
+  isResizing,
 }: AnalysisPanelProps) {
   const [orderBookOpen, setOrderBookOpen] = useState(true);
+  const [selectedExchange, setSelectedExchange] = useState<Exchange | 'merged'>(() => {
+    try {
+      const saved = localStorage.getItem('criptovisualizer:orderbook-exchange');
+      return saved === 'okx' || saved === 'bybit' || saved === 'merged' ? saved : 'binance';
+    } catch {
+      return 'binance';
+    }
+  });
+
+  const handleExchangeChange = (ex: Exchange | 'merged') => {
+    setSelectedExchange(ex);
+    try {
+      localStorage.setItem('criptovisualizer:orderbook-exchange', ex);
+    } catch {
+      // Ignora erro de localStorage indisponível
+    }
+  };
+
+  const exchangeLabel = useMemo(() => {
+    if (selectedExchange === 'binance') return 'Binance';
+    if (selectedExchange === 'okx') return 'OKX';
+    if (selectedExchange === 'bybit') return 'Bybit';
+    return 'Consolidado';
+  }, [selectedExchange]);
   const [aiOpen, setAiOpen] = useState(true);
   const [record, setRecord] = useState<AnalysisRecord | null>(null);
   const [running, setRunning] = useState<{ id: string; symbol: string; interval: Interval } | null>(null);
@@ -120,6 +152,16 @@ export function AnalysisPanel({
 
   return (
     <aside className="analysis-panel" aria-label="Painel de mercado e análise" hidden={hidden}>
+      {onStartResize && (
+        <div
+          className={`sidebar-resizer ${isResizing ? 'resizing' : ''}`}
+          onMouseDown={onStartResize}
+          onDoubleClick={onResetResize}
+          role="separator"
+          aria-orientation="vertical"
+          title="Arraste para a esquerda para redimensionar o painel (duplo clique para restaurar 320px)"
+        />
+      )}
       {/* Livro de Ofertas (Order Book) - Apenas para Criptomoedas com dados L2 */}
       {!isStock && (
         <section className="sidebar-section orderbook-section" aria-label="Livro de Ofertas">
@@ -134,13 +176,16 @@ export function AnalysisPanel({
               <h2>Livro de Ofertas</h2>
             </div>
             <div className="section-meta">
-              <span>Binance</span>
+              <span>{exchangeLabel}</span>
               {orderBookOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </div>
           </button>
           {orderBookOpen && (
             <OrderBookView
               depth={depth ?? null}
+              depths={depths}
+              selectedExchange={selectedExchange}
+              onSelectExchange={handleExchangeChange}
               currentPrice={currentPrice}
               onSelectPrice={onSelectPrice}
               maxLevels={8}

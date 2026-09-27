@@ -28,6 +28,7 @@ export interface OrderBook {
   bids: DepthLevel[];
   asks: DepthLevel[];
   time: number;
+  exchange?: Exchange | 'merged';
 }
 export interface Instrument { symbol: string; base: string; quote: string }
 export type Connection = 'connecting' | 'connected' | 'reconnecting' | 'error';

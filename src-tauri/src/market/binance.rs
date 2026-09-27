@@ -65,6 +65,7 @@ pub fn parse_stream(value: &Value, received: u64) -> Option<Event> {
                 bids,
                 asks,
                 time: received,
+                exchange: Some("binance".into()),
             }
         });
     }

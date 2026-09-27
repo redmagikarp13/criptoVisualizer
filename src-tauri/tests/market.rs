@@ -1,4 +1,9 @@
-use criptovisualizer_lib::market::{types::Candle, binance::{parse_history, parse_stream, merge_candles}, okx::parse_ticker as parse_okx, bybit::parse_ticker as parse_bybit};
+use criptovisualizer_lib::market::{
+    types::Candle,
+    binance::{parse_history, parse_stream, merge_candles},
+    okx::{parse_ticker as parse_okx, parse_depth as parse_okx_depth},
+    bybit::{parse_ticker as parse_bybit, parse_depth as parse_bybit_depth}
+};
 use serde_json::json;
 
 async fn live_feed(exchange: &str) {
@@ -171,4 +176,64 @@ fn extrai_evento_de_depth_combinado() {
     assert_eq!(val["depth"]["symbol"], "ENAUSDC");
     assert_eq!(val["depth"]["bids"].as_array().unwrap().len(), 2);
     assert_eq!(val["depth"]["asks"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn okx_extrai_depth_e_recusa_outro_par() {
+    let data = json!({
+        "arg": { "channel": "books5", "instId": "BTC-USDT" },
+        "data": [{
+            "asks": [["95001.0", "1.5", "0", "1"], ["95002.0", "2.0", "0", "2"]],
+            "bids": [["95000.0", "3.0", "0", "3"], ["94999.0", "4.0", "0", "4"]],
+            "ts": "1700000000000"
+        }]
+    });
+    let depth = parse_okx_depth(&data, "BTCUSDT", 1700000000001).unwrap();
+    assert_eq!(depth.symbol, "BTCUSDT");
+    assert_eq!(depth.exchange.as_deref(), Some("okx"));
+    assert_eq!(depth.bids.len(), 2);
+    assert_eq!(depth.bids[0].price, 95000.0);
+    assert_eq!(depth.bids[0].amount, 3.0);
+    assert_eq!(depth.asks[0].price, 95001.0);
+    assert_eq!(depth.asks[0].amount, 1.5);
+    assert!(parse_okx_depth(&data, "ETHUSDT", 1700000000001).is_none());
+}
+
+#[test]
+fn bybit_extrai_depth_snapshot_e_delta() {
+    let mut bids = std::collections::BTreeMap::new();
+    let mut asks = std::collections::BTreeMap::new();
+
+    let snap = json!({
+        "topic": "orderbook.50.BTCUSDT",
+        "type": "snapshot",
+        "ts": 1700000000000u64,
+        "data": {
+            "s": "BTCUSDT",
+            "b": [["95000.0", "2.0"], ["94900.0", "5.0"]],
+            "a": [["95100.0", "1.0"], ["95200.0", "4.0"]]
+        }
+    });
+    let depth = parse_bybit_depth(&snap, "BTCUSDT", &mut bids, &mut asks, 1700000000001).unwrap();
+    assert_eq!(depth.exchange.as_deref(), Some("bybit"));
+    assert_eq!(depth.bids.len(), 2);
+    assert_eq!(depth.bids[0].price, 95000.0);
+    assert_eq!(depth.asks[0].price, 95100.0);
+
+    // Delta update: update bid 95000 to amount 3.5, remove ask 95100 (amount 0)
+    let delta = json!({
+        "topic": "orderbook.50.BTCUSDT",
+        "type": "delta",
+        "ts": 1700000000050u64,
+        "data": {
+            "s": "BTCUSDT",
+            "b": [["95000.0", "3.5"]],
+            "a": [["95100.0", "0"]]
+        }
+    });
+    let updated = parse_bybit_depth(&delta, "BTCUSDT", &mut bids, &mut asks, 1700000000051).unwrap();
+    assert_eq!(updated.bids[0].price, 95000.0);
+    assert_eq!(updated.bids[0].amount, 3.5);
+    assert_eq!(updated.asks.len(), 1);
+    assert_eq!(updated.asks[0].price, 95200.0);
 }
