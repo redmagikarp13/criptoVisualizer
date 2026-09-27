@@ -323,6 +323,7 @@ pub fn run() {
                 tauri::RunEvent::ExitRequested { api, .. } => {
                     if shutdown(app) { api.prevent_exit(); }
                 }
+                #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen { .. } => {
                     if let Some(main) = app.get_webview_window("main") {
                         let _ = main.unminimize();
