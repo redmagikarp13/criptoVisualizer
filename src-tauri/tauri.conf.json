@@ -41,7 +41,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost tauri: https://brapi.dev https://fapi.binance.com https://api.binance.com https://*.binance.com wss://*.binance.com:9443; object-src 'none'; base-uri 'self'; frame-src 'none'"
+      "csp": "default-src 'self' tauri: http://tauri.localhost 'unsafe-inline' 'unsafe-eval'; script-src 'self' tauri: http://tauri.localhost 'unsafe-inline' 'unsafe-eval'; worker-src 'self' tauri: http://tauri.localhost blob:; style-src 'self' tauri: http://tauri.localhost 'unsafe-inline'; img-src 'self' tauri: http://tauri.localhost data: https:; font-src 'self' tauri: http://tauri.localhost data:; connect-src 'self' ipc: http://ipc.localhost tauri: http://tauri.localhost https: wss:; object-src 'none'; base-uri 'self'; frame-src 'none'"
     }
   },
   "bundle": {

@@ -99,6 +99,12 @@ window.addEventListener('unhandledrejection', (event) => {
   console.warn('Unhandled promise rejection caught:', event.reason);
 });
 
+window.addEventListener('keydown', (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'r') {
+    window.location.reload();
+  }
+});
+
 const params = new URLSearchParams(window.location.search);
 const isWidget = params.get('view') === 'widget';
 if (isWidget) {

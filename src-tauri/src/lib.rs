@@ -296,6 +296,14 @@ pub fn run() {
 
             let _ = tray_builder.build(app);
 
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.show();
+                let _ = main.set_focus();
+                if std::env::var("CRIPTO_DEVTOOLS").is_ok() {
+                    let _ = main.open_devtools();
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
