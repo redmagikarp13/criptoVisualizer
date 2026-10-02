@@ -68,9 +68,12 @@ jobs:
             - Ferramentas de desenho completas (Linha de Tendência, Suporte/Resistência, Medidor)
             - Indicadores técnicos avançados (SMA, EMA rápida/lenta, Bollinger, RSI, MACD, Volume SMA 20, VWAP, SuperTrend, Estocástico)
             - Order Book multi-exchange (Binance, OKX, Bybit) com opção de fusão de livros e detecção de spoofing
+            - Tokenomics & Desbloqueio de Tokens (Unlocks / Vesting): supply circulante vs. bloqueado, contagem regressiva de cliffs e risco de diluição
+            - Suporte direto à API da OpenAI (GPT-4o, GPT-4o-mini, o3-mini, o1) para análise técnica contextual com modo JSON
+            - Integração local com agentes de IA (Qoder e Antigravity CLI)
             - Ações da B3 com busca unificada e histórico via brapi.dev
             - Widget compacto flutuante no macOS
-            - Integração local com agentes de IA (Qoder e Antigravity) para análise técnica contextual
+            - Manual visual de interface com capturas em alta resolução
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
