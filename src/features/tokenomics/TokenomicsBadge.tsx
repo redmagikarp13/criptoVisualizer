@@ -27,6 +27,23 @@ export const TokenomicsBadge: React.FC<Props> = ({ symbol }) => {
     };
   }, [open]);
 
+  if (loading && !data) {
+    return (
+      <div className="tokenomics-badge-wrapper">
+        <button
+          type="button"
+          className="tokenomics-badge-btn"
+          disabled
+          style={{ opacity: 0.75, cursor: 'wait' }}
+          title="Carregando métricas de tokenomics e desbloqueios..."
+        >
+          <Unlock size={11} className="badge-unlock-icon animate-pulse" />
+          <span className="badge-text">Tokenomics…</span>
+        </button>
+      </div>
+    );
+  }
+
   if (!data) {
     return null;
   }

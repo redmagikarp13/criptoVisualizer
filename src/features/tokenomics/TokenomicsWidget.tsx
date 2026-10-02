@@ -4,7 +4,7 @@ import { formatCompactNumber, formatCompactUsd, formatPercent } from './api';
 import type { TokenomicsData } from './types';
 
 interface Props {
-  data: TokenomicsData;
+  data: TokenomicsData | null;
   loading?: boolean;
   onRefresh?: () => void;
   compact?: boolean;
@@ -16,6 +16,17 @@ export const TokenomicsWidget: React.FC<Props> = ({
   onRefresh,
   compact = false,
 }) => {
+  if (!data) {
+    return (
+      <div className="tokenomics-widget" style={{ padding: '12px 4px', color: 'var(--muted)', textAlign: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '11px' }}>
+          <RefreshCw size={13} className={loading ? 'spin' : ''} />
+          <span>{loading ? 'Carregando dados de vesting e unlocks…' : 'Dados de vesting indisponíveis'}</span>
+        </div>
+      </div>
+    );
+  }
+
   const isHighRisk = data.dilutionRisk === 'high';
   const isModerateRisk = data.dilutionRisk === 'moderate';
 

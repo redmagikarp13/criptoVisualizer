@@ -279,7 +279,7 @@ export function AnalysisPanel({
       )}
 
       {/* Tokenomics e Desbloqueios de Tokens */}
-      {!isStock && tokenomicsData && (
+      {!isStock && (tokenomicsData || tokenomicsLoading) && (
         <section className="sidebar-section tokenomics-section" aria-label="Tokenomics & Desbloqueios">
           <button
             type="button"
@@ -292,9 +292,11 @@ export function AnalysisPanel({
               <h2>Tokenomics & Unlocks</h2>
             </div>
             <div className="section-meta">
-              <span className={`risk-tag ${tokenomicsData.dilutionRisk.toLowerCase()}`}>
-                {tokenomicsData.dilutionRisk}
-              </span>
+              {tokenomicsData && (
+                <span className={`risk-tag ${tokenomicsData.dilutionRisk.toLowerCase()}`}>
+                  {tokenomicsData.dilutionRisk}
+                </span>
+              )}
               {tokenomicsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </div>
           </button>
