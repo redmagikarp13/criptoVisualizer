@@ -6,11 +6,14 @@ import type { Preferences } from '../settings/preferences';
 import type { Comparison } from '../market/comparison';
 import { OrderBookView } from '../orderbook/OrderBook';
 import { analyzeOrderBookBots } from '../orderbook/botDetector';
-import { BookOpen, ChevronDown, ChevronUp, MessageSquare, Sparkles, Zap } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, Coins, MessageSquare, Sparkles, Zap } from 'lucide-react';
 import { isB3Symbol, pairLabel } from '../../lib/symbol';
 import { useDerivatives } from '../derivatives/useDerivatives';
 import { toDerivativesSnapshot } from '../derivatives/api';
 import { DerivativesWidget } from '../derivatives/DerivativesWidget';
+import { useTokenomics } from '../tokenomics/useTokenomics';
+import { toTokenomicsSnapshot } from '../tokenomics/api';
+import { TokenomicsWidget } from '../tokenomics/TokenomicsWidget';
 
 export interface AnalysisPanelProps {
   symbol: string;
@@ -55,6 +58,12 @@ export function AnalysisPanel({
     loading: derivativesLoading,
     refresh: refreshDerivatives,
   } = useDerivatives(symbol, !isStock);
+  const {
+    data: tokenomicsData,
+    loading: tokenomicsLoading,
+    refresh: refreshTokenomics,
+  } = useTokenomics(symbol, !isStock);
+  const [tokenomicsOpen, setTokenomicsOpen] = useState(false);
   const [selectedExchange, setSelectedExchange] = useState<Exchange | 'merged'>(() => {
     try {
       const saved = localStorage.getItem('criptovisualizer:orderbook-exchange');
@@ -111,8 +120,14 @@ export function AnalysisPanel({
     };
   }, []);
 
+  const isOpenAi = preferences.agent === 'openai';
+  const hasOpenAiKey = Boolean(preferences.openaiApiKey?.trim());
   const status = statuses.find(item => item.agent === preferences.agent);
-  const allowed = desktop.available && status?.available && (preferences.agent !== 'antigravity' || preferences.antigravityEnabled) && candles.some(c => c.closed);
+  const allowed = candles.some(c => c.closed) && (
+    isOpenAi
+      ? hasOpenAiKey
+      : (desktop.available && status?.available && (preferences.agent !== 'antigravity' || preferences.antigravityEnabled))
+  );
 
   async function analyze() {
     if (current.current || !allowed) return;
@@ -166,12 +181,13 @@ export function AnalysisPanel({
         orderBookSnapshot,
         userNotes,
         toDerivativesSnapshot(derivativesData),
+        toTokenomicsSnapshot(tokenomicsData),
       );
-      const result = await desktop.analyze(id, preferences.agent, snapshot);
+      const result = await desktop.analyze(id, preferences.agent, snapshot, preferences);
       const analysis = analysisSchema.parse(result.analysis);
       if (active.current) setRecord({ id, agent: preferences.agent, model: result.model, snapshot, analysis, completedAt: Date.now() });
     } catch (cause) {
-      if (active.current) setError(cause instanceof Error && cause.name === 'ZodError' ? 'A CLI retornou uma resposta inválida.' : errorMessage(cause));
+      if (active.current) setError(cause instanceof Error && cause.name === 'ZodError' ? 'A resposta da IA não atendeu ao esquema estruturado.' : errorMessage(cause));
     } finally {
       current.current = null;
       if (active.current) { setRunning(null); setCancelling(false); }
@@ -262,6 +278,38 @@ export function AnalysisPanel({
         </section>
       )}
 
+      {/* Tokenomics e Desbloqueios de Tokens */}
+      {!isStock && tokenomicsData && (
+        <section className="sidebar-section tokenomics-section" aria-label="Tokenomics & Desbloqueios">
+          <button
+            type="button"
+            className="section-header-btn"
+            onClick={() => setTokenomicsOpen(v => !v)}
+            aria-expanded={tokenomicsOpen}
+          >
+            <div className="section-title">
+              <Coins size={16} />
+              <h2>Tokenomics & Unlocks</h2>
+            </div>
+            <div className="section-meta">
+              <span className={`risk-tag ${tokenomicsData.dilutionRisk.toLowerCase()}`}>
+                {tokenomicsData.dilutionRisk}
+              </span>
+              {tokenomicsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </div>
+          </button>
+          {tokenomicsOpen && (
+            <div className="tokenomics-panel-content" style={{ padding: '8px 12px 12px' }}>
+              <TokenomicsWidget
+                data={tokenomicsData}
+                loading={tokenomicsLoading}
+                onRefresh={refreshTokenomics}
+              />
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Análise por IA */}
       <section className="sidebar-section ai-section" aria-label="Análise por IA">
         <button
@@ -284,7 +332,21 @@ export function AnalysisPanel({
             <div className="analysis-body">
               <p>Uma leitura do mercado, no seu tempo.</p>
               <p className="muted">Até 100 candles fechados, com indicadores calculados sobre o histórico disponível. Nenhum arquivo pessoal é anexado pelo aplicativo.</p>
-              <p className="muted"><strong>{preferences.agent === 'qoder' ? 'Qoder CLI' : 'Antigravity CLI'}</strong><br />{status?.message ?? 'Verificando disponibilidade da CLI…'}</p>
+              <p className="muted">
+                <strong>
+                  {preferences.agent === 'qoder'
+                    ? 'Qoder CLI'
+                    : preferences.agent === 'openai'
+                      ? 'OpenAI API'
+                      : 'Antigravity CLI'}
+                </strong>
+                <br />
+                {preferences.agent === 'openai'
+                  ? preferences.openaiApiKey
+                    ? `Modelo: ${preferences.openaiModel || 'gpt-4o-mini'}`
+                    : 'Chave de API não informada. Configure nas Configurações.'
+                  : (status?.message ?? 'Verificando disponibilidade da CLI…')}
+              </p>
 
               {/* Ativo e Tempo Gráfico da Análise */}
               <div className="analysis-target-card">
@@ -326,7 +388,12 @@ export function AnalysisPanel({
                       ⚡ Futuros ({derivativesData.fundingRatePercent})
                     </span>
                   )}
-                  {!derivativesData?.hasFutures && (
+                  {tokenomicsData && (
+                    <span className="analysis-target-sync-hint" title="Dados de tokenomics e desbloqueios serão fornecidos para a IA">
+                      🪙 Tokenomics ({tokenomicsData.dilutionRisk})
+                    </span>
+                  )}
+                  {!derivativesData?.hasFutures && !tokenomicsData && (
                     <span className="analysis-target-sync-hint">Sincronizado com o gráfico</span>
                   )}
                 </div>
@@ -404,7 +471,7 @@ export function AnalysisPanel({
             {record && (
               <article className="analysis-result" aria-label="Resultado da análise">
                 {mismatch && <p className="notice">Esta análise pertence a outro par ou período. O snapshot original foi preservado.</p>}
-                <div className="snapshot-label">{record.agent === 'qoder' ? 'Qoder' : 'Antigravity'} · {record.model ?? 'Modelo não informado pela CLI'}<br />{record.snapshot.symbol} · {record.snapshot.interval} · Binance<br />Snapshot: {new Date(record.snapshot.capturedAt).toLocaleString('pt-BR')}</div>
+                <div className="snapshot-label">{record.agent === 'qoder' ? 'Qoder' : record.agent === 'openai' ? 'OpenAI' : 'Antigravity'} · {record.model ?? 'Modelo não informado'}<br />{record.snapshot.symbol} · {record.snapshot.interval} · Binance<br />Snapshot: {new Date(record.snapshot.capturedAt).toLocaleString('pt-BR')}</div>
                 {record.snapshot.userNotes && (
                   <div className="analysis-user-notes-pill">
                     <MessageSquare size={14} />
@@ -412,6 +479,12 @@ export function AnalysisPanel({
                       <span className="notes-pill-label">Observação considerada:</span>
                       <p className="notes-pill-text">"{record.snapshot.userNotes}"</p>
                     </div>
+                  </div>
+                )}
+                {record.snapshot.tokenomics && (
+                  <div className="analysis-context-pill" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--muted)', background: 'var(--surface-hover)', padding: '5px 8px', borderRadius: '4px', marginBottom: '8px' }}>
+                    <Coins size={13} style={{ color: 'var(--accent)' }} />
+                    <span>Tokenomics considerado: Diluição <strong>{record.snapshot.tokenomics.dilutionRisk}</strong> ({record.snapshot.tokenomics.circulatingPercent}% circulante)</span>
                   </div>
                 )}
                 <h3>Resumo</h3><p>{record.analysis.summary}</p><p>Tendência observada: <strong>{record.analysis.trend}</strong></p>

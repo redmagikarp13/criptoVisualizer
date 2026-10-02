@@ -32,6 +32,9 @@ pub struct Preferences {
     pub theme: String, pub indicators: IndicatorSettings, pub agent: String,
     pub antigravity_enabled: bool, pub qoder_path: String, pub antigravity_path: String,
     pub qoder_model: String, pub antigravity_model: String,
+    #[serde(default)] pub openai_api_key: String,
+    #[serde(default)] pub openai_model: String,
+    #[serde(default)] pub openai_base_url: String,
     #[serde(default)] pub alerts: Vec<Alert>,
     #[serde(default)] pub br_stocks: Vec<String>,
     #[serde(default)] pub brapi_token: String,
@@ -58,6 +61,9 @@ impl Default for Preferences {
             antigravity_path: String::new(),
             qoder_model: String::new(),
             antigravity_model: String::new(),
+            openai_api_key: String::new(),
+            openai_model: "gpt-4o-mini".into(),
+            openai_base_url: String::new(),
             alerts: vec![
                 Alert { id: "ena-breakout-0274".into(), symbol: "ENAUSDC".into(), direction: "above".into(), price: 0.274, enabled: true, mode: "recurring".into() },
                 Alert { id: "ena-support-0250".into(), symbol: "ENAUSDC".into(), direction: "below".into(), price: 0.250, enabled: true, mode: "recurring".into() },
@@ -131,9 +137,10 @@ impl Preferences {
             || self.favorites.len() > 20 || self.favorites.iter().any(|s| !valid_symbol(s))
             || self.favorites.iter().collect::<HashSet<_>>().len() != self.favorites.len()
             || !["system", "light", "dark"].contains(&self.theme.as_str())
-            || !["qoder", "antigravity"].contains(&self.agent.as_str())
+            || !["qoder", "antigravity", "openai"].contains(&self.agent.as_str())
             || self.qoder_path.len() > 1024 || self.antigravity_path.len() > 1024
             || !model_valid(&self.qoder_model) || !model_valid(&self.antigravity_model)
+            || self.openai_api_key.len() > 256 || !model_valid(&self.openai_model) || self.openai_base_url.len() > 256
             || self.alerts.len() > 50 || self.alerts.iter().any(|a| !alert_valid(a))
             || self.br_stocks.len() > 50 || self.br_stocks.iter().any(|s| !is_b3_symbol(s))
             || self.brapi_token.len() > 100

@@ -13,6 +13,7 @@ import { desktop } from '../../lib/desktop';
 import type { IndicatorResult } from '../indicators/calculations';
 import type { ChartPaneConfig } from './types';
 import { DerivativesBadge } from '../derivatives/DerivativesBadge';
+import { TokenomicsBadge } from '../tokenomics/TokenomicsBadge';
 
 interface ChartErrorBoundaryState {
   hasError: boolean;
@@ -227,6 +228,9 @@ export const ChartPane = memo(function ChartPane({
         <div className="pane-header-right">
           {/* Badge de Alavancagem e Mercados Futuros */}
           {!isB3 && <DerivativesBadge symbol={pane.symbol} />}
+
+          {/* Badge de Tokenomics e Desbloqueios */}
+          {!isB3 && <TokenomicsBadge symbol={pane.symbol} />}
 
           {/* Contador regressivo para fechamento do candle */}
           <div className="pane-countdown-pill" title={`Tempo restante para o fechamento do candle atual (${pane.interval})`}>

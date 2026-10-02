@@ -5,7 +5,8 @@ import { calculateIndicators } from '../indicators/calculations';
 import type { IndicatorSettings } from '../settings/preferences';
 import { symbolSchema } from '../settings/preferences';
 import type { DerivativesSnapshot } from '../derivatives/types';
-export type { DerivativesSnapshot };
+import type { TokenomicsSnapshot } from '../tokenomics/types';
+export type { DerivativesSnapshot, TokenomicsSnapshot };
 
 const text = z.string().min(1).max(3000);
 export const analysisSchema = z.object({
@@ -46,6 +47,7 @@ export function buildSnapshot(
   orderBook: OrderBookSnapshot | null = null,
   userNotes?: string | null,
   derivatives: DerivativesSnapshot | null = null,
+  tokenomics: TokenomicsSnapshot | null = null,
 ) {
   symbolSchema.parse(symbol);
   const closed = candles.filter(c => c.closed);
@@ -67,7 +69,8 @@ export function buildSnapshot(
     orderBook,
     userNotes: sanitizedNotes,
     derivatives,
+    tokenomics,
   });
 }
 export type Snapshot = ReturnType<typeof buildSnapshot>;
-export interface AnalysisRecord { id: string; agent: 'qoder' | 'antigravity'; model: string | null; snapshot: Snapshot; analysis: Analysis; completedAt: number }
+export interface AnalysisRecord { id: string; agent: 'qoder' | 'antigravity' | 'openai'; model: string | null; snapshot: Snapshot; analysis: Analysis; completedAt: number }

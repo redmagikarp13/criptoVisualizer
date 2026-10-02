@@ -4,44 +4,214 @@ import { defaultPreferences, parsePreferences, type Preferences } from '../featu
 import type { Analysis, Snapshot } from '../features/analysis/snapshot';
 import type { Agent, BrStockQuote, BrStockSearchResult, Candle, CliStatus, Instrument, MarketEvent, MarketRequest } from './types';
 
-const available = isTauri();
+const isBrowserDocPreview = typeof window !== 'undefined' && (new URLSearchParams(window.location.search).get('preview') === 'desktop' || window.location.port === '8089');
+const available = isTauri() || isBrowserDocPreview;
 export const desktop = {
   available,
   async loadPreferences(): Promise<{ preferences: Preferences; warning: string | null }> {
-    if (!available) return { preferences: parsePreferences(localStorage.getItem('criptovisualizer-preview')), warning: null };
+    if (!isTauri()) return { preferences: parsePreferences(localStorage.getItem('criptovisualizer-preview')), warning: null };
     const result = await invoke<{ preferences: unknown; warning: string | null }>('load_preferences');
     return { ...result, preferences: parsePreferences(result.preferences) };
   },
   async savePreferences(preferences: Preferences): Promise<void> {
-    if (available) return invoke('save_preferences', { preferences });
+    if (isTauri()) return invoke('save_preferences', { preferences });
     localStorage.setItem('criptovisualizer-preview', JSON.stringify(preferences));
   },
   async listInstruments(): Promise<Instrument[]> {
-    if (!available) return defaultPreferences.favorites.map(symbol => ({ symbol, base: symbol.slice(0, -4), quote: 'USDT' }));
+    if (!isTauri()) return defaultPreferences.favorites.map(symbol => ({ symbol, base: symbol.slice(0, -4), quote: 'USDT' }));
     return invoke('list_instruments');
   },
   async subscribeMarket(request: MarketRequest, receive: (event: MarketEvent) => void, signal: AbortSignal): Promise<() => void> {
-    if (!available || signal.aborted) return () => {};
-    const unlisten = await listen<MarketEvent>('market-event', ({ payload }) => {
-      if (!signal.aborted && payload.id === request.id) receive(payload);
+    if (isTauri()) {
+      if (signal.aborted) return () => {};
+      const unlisten = await listen<MarketEvent>('market-event', ({ payload }) => {
+        if (!signal.aborted && payload.id === request.id) receive(payload);
+      });
+      if (signal.aborted) { unlisten(); return () => {}; }
+      try { await invoke('start_market', { request }); }
+      catch (error) { unlisten(); throw error; }
+      let stopped = false;
+      const cleanup = () => {
+        if (stopped) return;
+        stopped = true; unlisten();
+        void invoke('stop_market', { id: request.id }).catch(() => {});
+      };
+      if (signal.aborted) cleanup();
+      return cleanup;
+    }
+
+    if (signal.aborted) return () => {};
+
+    receive({
+      id: request.id,
+      kind: 'status',
+      exchange: 'binance',
+      status: 'connected',
+      message: 'Conectado à Binance',
     });
-    if (signal.aborted) { unlisten(); return () => {}; }
-    try { await invoke('start_market', { request }); }
-    catch (error) { unlisten(); throw error; }
-    let stopped = false;
-    const cleanup = () => {
-      if (stopped) return;
-      stopped = true; unlisten();
-      void invoke('stop_market', { id: request.id }).catch(() => {});
+
+    const isCrypto = !request.symbol.endsWith('3') && !request.symbol.endsWith('4') && !request.symbol.endsWith('11');
+    if (!isCrypto) return () => {};
+
+    // 1. Histórico de Candles
+    const klinesUrl = `https://data-api.binance.vision/api/v3/klines?symbol=${encodeURIComponent(request.symbol)}&interval=${encodeURIComponent(request.interval)}&limit=300`;
+    fetch(klinesUrl, { signal })
+      .then(res => res.json())
+      .then(data => {
+        if (signal.aborted || !Array.isArray(data)) return;
+        const now = Date.now();
+        const candles: Candle[] = data.map((row: any) => ({
+          time: Math.floor(Number(row[0]) / 1000),
+          open: Number(row[1]),
+          high: Number(row[2]),
+          low: Number(row[3]),
+          close: Number(row[4]),
+          volume: Number(row[5]),
+          closed: Number(row[6]) < now,
+        }));
+        receive({ id: request.id, kind: 'history', candles });
+      })
+      .catch(() => {});
+
+    // 2. Cotações dos favoritos + símbolo atual
+    const tickersUrl = 'https://data-api.binance.vision/api/v3/ticker/24hr';
+    fetch(tickersUrl, { signal })
+      .then(res => res.json())
+      .then(tickers => {
+        if (signal.aborted || !Array.isArray(tickers)) return;
+        const targets = new Set([request.symbol, ...request.favorites]);
+        const now = Date.now();
+        for (const t of tickers) {
+          if (targets.has(t.symbol)) {
+            receive({
+              id: request.id,
+              kind: 'quote',
+              quote: {
+                symbol: t.symbol,
+                price: Number(t.lastPrice),
+                change24h: Number(t.priceChangePercent),
+                time: Number(t.closeTime),
+                receivedAt: now,
+                exchange: 'binance',
+              },
+            });
+          }
+        }
+      })
+      .catch(() => {});
+
+    // 3. Livro de Ofertas (Depth)
+    const depthUrl = `https://data-api.binance.vision/api/v3/depth?symbol=${encodeURIComponent(request.symbol)}&limit=50`;
+    fetch(depthUrl, { signal })
+      .then(res => res.json())
+      .then(d => {
+        if (signal.aborted || !d?.bids || !d?.asks) return;
+        receive({
+          id: request.id,
+          kind: 'depth',
+          depth: {
+            symbol: request.symbol,
+            bids: d.bids.map((b: any) => ({ price: Number(b[0]), amount: Number(b[1]) })),
+            asks: d.asks.map((a: any) => ({ price: Number(a[0]), amount: Number(a[1]) })),
+            time: Date.now(),
+            exchange: 'binance',
+          },
+        });
+      })
+      .catch(() => {});
+
+    // 4. WebSocket ao vivo
+    const cleanSym = request.symbol.toLowerCase();
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${cleanSym}@kline_${request.interval}/${cleanSym}@depth20@100ms/${cleanSym}@ticker`);
+
+    ws.onmessage = (event) => {
+      if (signal.aborted) return;
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.e === 'kline' && msg.k) {
+          const k = msg.k;
+          receive({
+            id: request.id,
+            kind: 'candle',
+            candle: {
+              time: Math.floor(Number(k.t) / 1000),
+              open: Number(k.o),
+              high: Number(k.h),
+              low: Number(k.l),
+              close: Number(k.c),
+              volume: Number(k.v),
+              closed: Boolean(k.x),
+            },
+          });
+        } else if (msg.bids && msg.asks) {
+          receive({
+            id: request.id,
+            kind: 'depth',
+            depth: {
+              symbol: request.symbol,
+              bids: msg.bids.map((b: any) => ({ price: Number(b[0]), amount: Number(b[1]) })),
+              asks: msg.asks.map((a: any) => ({ price: Number(a[0]), amount: Number(a[1]) })),
+              time: Date.now(),
+              exchange: 'binance',
+            },
+          });
+        } else if (msg.e === '24hrTicker') {
+          receive({
+            id: request.id,
+            kind: 'quote',
+            quote: {
+              symbol: msg.s,
+              price: Number(msg.c),
+              change24h: Number(msg.P),
+              time: Number(msg.E),
+              receivedAt: Date.now(),
+              exchange: 'binance',
+            },
+          });
+        }
+      } catch {
+        // ignore error
+      }
     };
-    if (signal.aborted) cleanup();
-    return cleanup;
+
+    return () => {
+      ws.close();
+    };
   },
   async detectCli(preferences: Preferences): Promise<CliStatus[]> {
-    if (!available) return (['qoder', 'antigravity'] as const).map(agent => ({ agent, available: false, path: null, message: 'Disponível no aplicativo desktop.' }));
-    return invoke('detect_cli', { preferences });
+    const hasOpenAiKey = Boolean(preferences.openaiApiKey?.trim());
+    const openAiStatus: CliStatus = {
+      agent: 'openai',
+      available: hasOpenAiKey,
+      path: null,
+      message: hasOpenAiKey
+        ? `OpenAI API configurada (${preferences.openaiModel || 'gpt-4o-mini'}).`
+        : 'Configure sua API key da OpenAI nas configurações.',
+    };
+    if (!available) {
+      return [
+        { agent: 'qoder', available: false, path: null, message: 'Disponível no aplicativo desktop.' },
+        { agent: 'antigravity', available: false, path: null, message: 'Disponível no aplicativo desktop.' },
+        openAiStatus,
+      ];
+    }
+    const statuses = await invoke<CliStatus[]>('detect_cli', { preferences });
+    if (!statuses.some(s => s.agent === 'openai')) {
+      statuses.push(openAiStatus);
+    }
+    return statuses;
   },
-  async analyze(id: string, agent: Agent, snapshot: Snapshot): Promise<{ analysis: Analysis; model: string | null }> {
+  async analyze(
+    id: string,
+    agent: Agent,
+    snapshot: Snapshot,
+    preferences?: Preferences,
+    signal?: AbortSignal,
+  ): Promise<{ analysis: Analysis; model: string | null }> {
+    if (agent === 'openai') {
+      const { analyzeWithOpenAi } = await import('../features/analysis/openai');
+      return analyzeWithOpenAi(snapshot, preferences?.openaiApiKey || '', preferences?.openaiModel, preferences?.openaiBaseUrl, signal);
+    }
     if (!available) throw new Error('A análise por CLI exige o aplicativo desktop.');
     return invoke('analyze_market', { id, agent, snapshot });
   },
@@ -189,13 +359,32 @@ export const desktop = {
     }
   },
   async fetchDerivativesData(symbol: string): Promise<Record<string, unknown> | null> {
-    if (available) {
+    if (isTauri()) {
       try {
         return await invoke<Record<string, unknown> | null>('fetch_derivatives_data', { symbol });
       } catch (err) {
         console.warn('fetch_derivatives_data desktop error:', err);
       }
     }
-    return null;
+    const clean = symbol.trim().toUpperCase();
+    if (!clean.endsWith('USDT') && !clean.endsWith('USDC')) return null;
+    try {
+      const [premiumRes, oiRes, oiHistRes, lsRes, topLsRes] = await Promise.all([
+        fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${clean}`).catch(() => null),
+        fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${clean}`).catch(() => null),
+        fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${clean}&period=15m&limit=8`).catch(() => null),
+        fetch(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${clean}&period=15m&limit=2`).catch(() => null),
+        fetch(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${clean}&period=15m&limit=2`).catch(() => null),
+      ]);
+      const premium = premiumRes && premiumRes.ok ? await premiumRes.json() : null;
+      const oi = oiRes && oiRes.ok ? await oiRes.json() : null;
+      const oiHist = oiHistRes && oiHistRes.ok ? await oiHistRes.json() : [];
+      const ls = lsRes && lsRes.ok ? await lsRes.json() : [];
+      const topLs = topLsRes && topLsRes.ok ? await topLsRes.json() : [];
+      return { premium, oi, oi_hist: oiHist, ls, top_ls: topLs };
+    } catch {
+      return null;
+    }
   },
 };
+

@@ -58,7 +58,7 @@ export function WidgetApp() {
     refreshKey,
   );
 
-  const market = useMarket(preferences.symbol, preferences.interval, preferences.favorites, ready && desktop.available);
+  const market = useMarket(preferences.symbol, preferences.interval, preferences.favorites, ready);
 
   const [stockCandles, setStockCandles] = useState<Candle[]>([]);
   useEffect(() => {

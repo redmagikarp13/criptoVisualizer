@@ -83,6 +83,17 @@ pub async fn detect(preferences: &Preferences, cwd: &Path, cancel: CancellationT
         }
         statuses.push(status);
     }
+    let has_openai_key = !preferences.openai_api_key.trim().is_empty();
+    statuses.push(CliStatus {
+        agent: "openai".into(),
+        available: has_openai_key,
+        path: None,
+        message: if has_openai_key {
+            format!("OpenAI API configurada (Modelo: {}).", if preferences.openai_model.is_empty() { "gpt-4o-mini" } else { &preferences.openai_model })
+        } else {
+            "Informe sua chave da API da OpenAI nas configurações para habilitar.".into()
+        },
+    });
     statuses
 }
 

@@ -1,6 +1,6 @@
 export const intervals = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
 export type Interval = typeof intervals[number];
-export type Agent = 'qoder' | 'antigravity';
+export type Agent = 'qoder' | 'antigravity' | 'openai';
 export interface Candle {
   time: number;
   open: number;
